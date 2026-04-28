@@ -94,17 +94,11 @@ Via system keyring (KWallet, GNOME Keyring, macOS Keychain, Windows Credential L
 
 <div align="center">
 
-### Main Screen
-<!-- ![main](docs/screenshots/main.png) -->
-*— screenshot coming soon —*
+<img src="images/chat.png" width="700">
 
 ### Setup Wizard
-<!-- ![wizard](docs/screenshots/wizard.png) -->
-*— screenshot coming soon —*
 
-### Dangerous Action Confirmation
-<!-- ![confirm](docs/screenshots/confirm.png) -->
-*— screenshot coming soon —*
+<img src="images/install.png" width="700">
 
 ### Themes
 
