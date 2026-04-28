@@ -167,14 +167,8 @@ class ConfigManager:
         except Exception:
             pass
 
-        # Fallback: base64 decode
-        encoded = self._config.ai.api_key
-        if encoded:
-            try:
-                return base64.b64decode(encoded.encode()).decode()
-            except Exception:
-                return encoded
-        return ""
+        # Просто возвращаем ключ как есть (без base64)
+        return self._config.ai.api_key or ""
 
     def set_api_key(self, key: str) -> bool:
         """Сохраняет API ключ безопасно."""
@@ -200,6 +194,19 @@ class ConfigManager:
         """Сбрасывает конфигурацию к дефолтным значениям."""
         self._config = self._load_defaults()
         return self.save()
+
+    def is_configured(self) -> bool:
+        """Проверяет настроен ли ассистент (провайдер и API ключ)."""
+        if not self.config_exists():
+            return False
+        if not self.config.ai.provider:
+            return False
+        api_key = self.get_api_key()
+        return bool(api_key) or self.config.ai.provider == "openai_compatible" and not self.config.ai.api_key
+
+    def reload(self) -> None:
+        """Перезагружает конфигурацию из файла."""
+        self.load()
 
 
 # Глобальный экземпляр

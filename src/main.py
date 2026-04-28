@@ -55,7 +55,7 @@ async def _async_main(
     from src.settings.config_manager import get_config_manager
 
     # Инициализируем менеджер конфигурации
-    cm = get_config_manager(config_path)
+    cm = get_config_manager()
 
     # Применяем CLI-аргументы поверх конфига
     if provider:

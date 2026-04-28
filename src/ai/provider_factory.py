@@ -45,6 +45,7 @@ class ProviderFactory:
                     temperature=temperature,
                     max_tokens=max_tokens,
                     system_prompt=system_prompt,
+                    base_url=base_url,
                 )
 
             elif provider_name == "gemini":

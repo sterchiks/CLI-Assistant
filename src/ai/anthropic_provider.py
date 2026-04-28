@@ -16,6 +16,11 @@ ANTHROPIC_MODELS = [
     "claude-3-5-sonnet-20241022",
     "claude-3-5-haiku-20241022",
     "claude-3-opus-20240229",
+    # Модели, доступные через прокси-сервисы
+    "claude-sonnet-4-6",
+    "claude-opus-4-6",
+    "claude-opus-4-7",
+    "claude-opus-latest",
 ]
 
 DEFAULT_SYSTEM_PROMPT = """Ты — CLI Assistant, AI-ассистент для управления системой через терминал.
@@ -41,19 +46,35 @@ class AnthropicProvider(BaseProvider):
         temperature: float = 0.7,
         max_tokens: int = 4096,
         system_prompt: str = "",
+        base_url: str = "",
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._temperature = temperature
         self._max_tokens = max_tokens
         self._system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
+        self._base_url = base_url
         self._client = None
 
     def _get_client(self):
-        """Лениво создаёт клиент Anthropic."""
+        """Лениво создаёт клиент Anthropic.
+
+        Если ключ имеет префикс прокси-сервиса (sk-fp-, sk-or-, sk-proj-proxy- и т.п.)
+        или задан кастомный base_url — добавляем заголовок Authorization: Bearer,
+        так как многие прокси (включая fapi/OpenRouter-style) требуют именно его
+        вместо стандартного x-api-key от Anthropic.
+        """
         if self._client is None:
             import anthropic
-            self._client = anthropic.AsyncAnthropic(api_key=self._api_key)
+            kwargs = {"api_key": self._api_key}
+            if self._base_url:
+                kwargs["base_url"] = self._base_url
+                # Для любого кастомного base_url дублируем авторизацию через Bearer,
+                # оставляя и x-api-key — какой заголовок примет сервер, тот и сработает.
+                kwargs["default_headers"] = {
+                    "Authorization": f"Bearer {self._api_key}",
+                }
+            self._client = anthropic.AsyncAnthropic(**kwargs)
         return self._client
 
     def get_provider_name(self) -> str:

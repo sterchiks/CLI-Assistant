@@ -20,7 +20,11 @@
   "safety": {
     "confirm_destructive": true,
     "confirm_sudo": true,
-    "blocked_paths": ["/etc/passwd", "/etc/shadow", "/etc/sudoers"],
+    "blocked_paths": [
+      "/etc/passwd",
+      "/etc/shadow",
+      "/etc/sudoers"
+    ],
     "max_file_size_mb": 50,
     "allowed_sudo_commands": []
   },

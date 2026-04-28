@@ -40,7 +40,8 @@ class AssistantMessage(Static):
 
     def __init__(self, timestamp: str = "") -> None:
         ts = f"[dim]🤖 Ассистент  {timestamp}[/dim]\n" if timestamp else "[dim]🤖 Ассистент[/dim]\n"
-        super().__init__(ts, classes="assistant-bubble", id="current-assistant-msg")
+        # Используем уникальный ID для каждого сообщения
+        super().__init__(ts, classes="assistant-bubble", id=f"assistant-msg-{id(self)}")
         self._text = ts
 
     def append_text(self, chunk: str) -> None:
@@ -119,14 +120,66 @@ class SudoPasswordDialog(Container):
             id="sudo-buttons",
         )
 
+    can_focus = True
+
+    def on_mount(self) -> None:
+        """Автоматически ставим фокус на поле ввода при открытии диалога."""
+        def set_focus(*args, **kwargs):
+            try:
+                input_widget = self.query_one("#sudo-input", Input)
+                input_widget.focus()
+            except Exception:
+                pass
+        # Даём время на рендеринг перед установкой фокуса
+        self.call_later(set_focus, 0.05)
+
+    def on_key(self, event) -> None:
+        """Ловим нажатие Escape для закрытия диалога без ввода."""
+        try:
+            # Только обрабатываем Escape - закрываем диалог
+            if event.key == "escape":
+                self.call_later(self._close_dialog)
+                event.stop()
+        except Exception:
+            pass
+    
+    def _close_dialog(self) -> None:
+        """Закрывает диалог и вызывает callback."""
+        try:
+            self.remove()
+            def call_callback():
+                if asyncio.iscoroutinefunction(self._callback):
+                    asyncio.create_task(self._callback(""))
+                else:
+                    self._callback("")
+            self.call_later(call_callback)
+        except Exception:
+            pass
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Обрабатываем Enter в поле пароля."""
+        if event.input.id == "sudo-input":
+            password = event.value
+            self.remove()
+            if asyncio.iscoroutinefunction(self._callback):
+                await self._callback(password)
+            else:
+                self._callback(password)
+
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-sudo-ok":
             password = self.query_one("#sudo-input", Input).value
             self.remove()
-            await self._callback(password)
+            if asyncio.iscoroutinefunction(self._callback):
+                await self._callback(password)
+            else:
+                self._callback(password)
         elif event.button.id == "btn-sudo-cancel":
             self.remove()
-            await self._callback("")
+            if asyncio.iscoroutinefunction(self._callback):
+                await self._callback("")
+            else:
+                self._callback("")
 
     CSS = """
     #sudo-dialog {
@@ -233,10 +286,10 @@ class CLIAssistantApp(App):
             )
         yield Footer()
 
-    def on_mount(self) -> None:
+    async def on_mount(self) -> None:
         """Инициализация при запуске."""
         theme_css = get_theme(self._config.ui.theme)
-        self.stylesheet.add_css(theme_css)
+        self.css = theme_css
         self._update_header()
         # Запускаем периодическое обновление системной информации
         self.set_interval(5.0, self._refresh_system_info)
@@ -335,7 +388,7 @@ class CLIAssistantApp(App):
                 if event_type == "text":
                     chunk = event["content"]
                     if self._current_assistant_widget:
-                        self.call_from_thread(
+                        self.call_later(
                             self._current_assistant_widget.append_text, chunk
                         )
 
@@ -343,27 +396,27 @@ class CLIAssistantApp(App):
                     tool_name = event.get("tool_name", "")
                     tool_input = event.get("tool_input", {})
                     if self._config.ui.show_tool_calls:
-                        self.call_from_thread(
+                        self.call_later(
                             self._add_tool_widget, tool_name, tool_input
                         )
 
                 elif event_type == "tool_done":
                     tool_name = event.get("tool_name", "")
                     if self._current_tool_widget:
-                        self.call_from_thread(
+                        self.call_later(
                             self._current_tool_widget.set_done, 0.0
                         )
                     sidebar = self.query_one("#sidebar", SidebarWidget)
-                    self.call_from_thread(sidebar.add_action, tool_name)
+                    self.call_later(sidebar.add_action, tool_name)
 
                 elif event_type == "error":
                     error = event.get("error", "Неизвестная ошибка")
-                    self.call_from_thread(self._show_error, error)
+                    self.call_later(self._show_error, error)
 
         except Exception as e:
-            self.call_from_thread(self._show_error, str(e))
+            self.call_later(self._show_error, str(e))
         finally:
-            self.call_from_thread(self._finish_response)
+            self.call_later(self._finish_response)
 
     def _add_tool_widget(self, tool_name: str, tool_input: dict) -> None:
         """Добавляет виджет вызова инструмента в чат."""
@@ -372,7 +425,7 @@ class CLIAssistantApp(App):
             widget = ToolCallWidget(tool_name, tool_input)
             self._current_tool_widget = widget
             self.call_later(chat_area.mount, widget)
-            self.call_later(chat_area.scroll_end, False)
+            self.call_later(lambda: chat_area.scroll_end(animate=False))
         except Exception:
             pass
 
@@ -391,6 +444,11 @@ class CLIAssistantApp(App):
     def _finish_response(self) -> None:
         """Завершает отображение ответа."""
         self.is_thinking = False
+        if self._current_assistant_widget:
+            try:
+                self._current_assistant_widget.finalize()
+            except Exception:
+                pass
         self._current_assistant_widget = None
         self._current_tool_widget = None
         try:
@@ -412,7 +470,7 @@ class CLIAssistantApp(App):
             except Exception:
                 future.set_result(False)
 
-        self.call_from_thread(show_dialog)
+        self.call_later(show_dialog)
         return await future
 
     async def _on_sudo_request(self) -> str:
@@ -428,7 +486,7 @@ class CLIAssistantApp(App):
             except Exception:
                 future.set_result("")
 
-        self.call_from_thread(show_sudo_dialog)
+        self.call_later(show_sudo_dialog)
         return await future
 
     # ─── Slash-команды ────────────────────────────────────────────────────────
@@ -478,7 +536,7 @@ class CLIAssistantApp(App):
                 self._config.ui.theme = arg
                 get_config_manager().save()
                 theme_css = get_theme(arg)
-                self.stylesheet.add_css(theme_css)
+                self.css = theme_css
                 await chat_area.mount(Static(f"[green]Тема изменена на: {arg}[/green]"))
             else:
                 from .themes import get_theme_names
@@ -486,16 +544,36 @@ class CLIAssistantApp(App):
                 await chat_area.mount(Static(f"[cyan]Доступные темы: {themes}[/cyan]"))
 
         elif cmd == "/apikey":
-            await chat_area.mount(Static("[yellow]Введите новый API ключ:[/yellow]"))
-            # Показываем диалог ввода пароля
-            future: asyncio.Future[str] = asyncio.get_event_loop().create_future()
-            dialog = SudoPasswordDialog(lambda v: future.set_result(v))
-            await chat_area.mount(dialog)
-            key = await future
-            if key:
-                get_config_manager().set_api_key(key)
-                self.assistant.reload_config()
-                await chat_area.mount(Static("[green]API ключ обновлён[/green]"))
+            # Показываем диалог ввода пароля в worker, чтобы не блокировать UI
+            async def handle_apikey():
+                future: asyncio.Future[str] = asyncio.get_event_loop().create_future()
+                
+                async def on_dialog_close(pwd):
+                    future.set_result(pwd)
+                    # Возвращаем фокус на основное поле ввода после закрытия диалога
+                    try:
+                        self.query_one("#message-input", Input).focus()
+                    except Exception:
+                        pass
+                
+                dialog = SudoPasswordDialog(on_dialog_close)
+                await chat_area.mount(dialog)
+                # Даём время диалогу смонтироваться перед фокусировкой
+                await asyncio.sleep(0.1)
+                try:
+                    dialog.focus()
+                except Exception:
+                    pass
+                
+                key = await future
+                if key:
+                    get_config_manager().set_api_key(key)
+                    get_config_manager().save()
+                    self.assistant.reload_config()
+                    await chat_area.mount(Static("[green]API ключ обновлён[/green]"))
+                    chat_area.scroll_end(animate=False)
+            
+            self.run_worker(handle_apikey())
 
         elif cmd == "/baseurl":
             if arg:
