@@ -1,11 +1,10 @@
 """Менеджер конфигурации CLI Assistant."""
 
-import json
-import os
 import base64
+import json
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -52,11 +51,26 @@ class SessionConfig(BaseModel):
     sudo_cache_minutes: int = 15
 
 
+class ProfileConfig(BaseModel):
+    """Конфигурация одного профиля (поднабор AIConfig)."""
+    provider: str = "anthropic"
+    model: str = ""
+    api_key: str = ""           # как и в AIConfig: "__keyring__" или base64
+    base_url: str = ""
+
+
 class AppConfig(BaseModel):
     ai: AIConfig = Field(default_factory=AIConfig)
     ui: UIConfig = Field(default_factory=UIConfig)
     safety: SafetyConfig = Field(default_factory=SafetyConfig)
     session: SessionConfig = Field(default_factory=SessionConfig)
+    # Мульти-профили
+    profiles: Dict[str, ProfileConfig] = Field(default_factory=dict)
+    active_profile: str = ""
+
+    class Config:
+        # Игнорируем неизвестные поля при чтении старых конфигов
+        extra = "ignore"
 
 
 class ConfigManager:
@@ -158,23 +172,39 @@ class ConfigManager:
             return False
 
     def get_api_key(self) -> str:
-        """Получает API ключ, пытаясь сначала из keyring."""
-        try:
-            import keyring
-            key = keyring.get_password("cli-assistant", f"api_key_{self._config.ai.provider}")
-            if key:
-                return key
-        except Exception:
-            pass
+        """Получает API ключ из config.json или keyring."""
+        stored = self._config.ai.api_key
+        if stored == "__keyring__":
+            try:
+                import keyring
 
-        # Просто возвращаем ключ как есть (без base64)
-        return self._config.ai.api_key or ""
+                key = keyring.get_password(
+                    "cli-assistant",
+                    f"api_key_{self._config.ai.provider}",
+                )
+                if key:
+                    return key
+            except Exception:
+                pass
+            return ""
+
+        if stored:
+            try:
+                return base64.b64decode(stored.encode()).decode()
+            except Exception:
+                return stored
+
+        return ""
 
     def set_api_key(self, key: str) -> bool:
         """Сохраняет API ключ безопасно."""
         try:
             import keyring
-            keyring.set_password("cli-assistant", f"api_key_{self._config.ai.provider}", key)
+            keyring.set_password(
+                "cli-assistant",
+                f"api_key_{self._config.ai.provider}",
+                key,
+            )
             self._config.ai.api_key = "__keyring__"
             return True
         except Exception:
@@ -190,6 +220,23 @@ class ConfigManager:
             logger.error(f"Ошибка сохранения API ключа: {e}")
             return False
 
+    def clear_keyring(self) -> bool:
+        """Удаляет сохранённые API ключи из keyring для всех провайдеров."""
+        providers = {"anthropic", "gemini", "openai_compatible", self._config.ai.provider}
+
+        try:
+            import keyring
+        except Exception:
+            return True
+
+        success = True
+        for provider in providers:
+            try:
+                keyring.delete_password("cli-assistant", f"api_key_{provider}")
+            except Exception:
+                success = False
+        return success
+
     def reset(self) -> bool:
         """Сбрасывает конфигурацию к дефолтным значениям."""
         self._config = self._load_defaults()
@@ -202,11 +249,180 @@ class ConfigManager:
         if not self.config.ai.provider:
             return False
         api_key = self.get_api_key()
-        return bool(api_key) or self.config.ai.provider == "openai_compatible" and not self.config.ai.api_key
+        if api_key:
+            return True
+        if self.config.ai.provider == "openai_compatible":
+            return bool(self.config.ai.base_url and self.config.ai.model)
+        return False
 
     def reload(self) -> None:
         """Перезагружает конфигурацию из файла."""
         self.load()
+
+    # ─── Мульти-профили ─────────────────────────────────────────────────────
+
+    def get_profiles(self) -> Dict[str, Dict[str, str]]:
+        """Возвращает словарь профилей как dict[name -> dict]."""
+        try:
+            return {n: p.model_dump() for n, p in self._config.profiles.items()}
+        except Exception:
+            return {}
+
+    def get_active_profile(self) -> str:
+        """Имя активного профиля или пустая строка."""
+        try:
+            name = self._config.active_profile or ""
+            if name and name in self._config.profiles:
+                return name
+        except Exception:
+            pass
+        return ""
+
+    def _store_profile_api_key(self, profile_name: str, key: str) -> str:
+        """
+        Сохраняет API ключ профиля в keyring (под уникальным сервисом для профиля)
+        или fallback в base64. Возвращает значение, которое надо положить в
+        profile.api_key ("__keyring__" или base64).
+        """
+        if not key:
+            return ""
+        try:
+            import keyring
+            keyring.set_password(
+                "cli-assistant-profile",
+                f"api_key_{profile_name}",
+                key,
+            )
+            return "__keyring__"
+        except Exception:
+            pass
+        try:
+            return base64.b64encode(key.encode()).decode()
+        except Exception:
+            return ""
+
+    def _read_profile_api_key(self, profile_name: str, stored: str) -> str:
+        """Извлекает API ключ профиля из хранилища."""
+        if not stored:
+            return ""
+        if stored == "__keyring__":
+            try:
+                import keyring
+                k = keyring.get_password("cli-assistant-profile", f"api_key_{profile_name}")
+                return k or ""
+            except Exception:
+                return ""
+        try:
+            return base64.b64decode(stored.encode()).decode()
+        except Exception:
+            return stored
+
+    def add_profile(
+        self,
+        name: str,
+        provider: str,
+        model: str,
+        api_key: str,
+        base_url: str = "",
+    ) -> bool:
+        """Добавляет новый профиль. Возвращает False если уже существует или ошибка."""
+        name = (name or "").strip()
+        if not name:
+            return False
+        if name in self._config.profiles:
+            return False
+        try:
+            stored_key = self._store_profile_api_key(name, api_key)
+            self._config.profiles[name] = ProfileConfig(
+                provider=provider,
+                model=model,
+                api_key=stored_key,
+                base_url=base_url,
+            )
+            # Если активный профиль не задан — делаем этот активным и
+            # синхронизируем ai-конфиг.
+            if not self._config.active_profile:
+                self.switch_profile(name)
+            self.save()
+            return True
+        except Exception as e:
+            logger.error(f"add_profile error: {e}")
+            return False
+
+    def delete_profile(self, name: str) -> bool:
+        """Удаляет профиль по имени."""
+        if name not in self._config.profiles:
+            return False
+        try:
+            del self._config.profiles[name]
+            try:
+                import keyring
+                keyring.delete_password("cli-assistant-profile", f"api_key_{name}")
+            except Exception:
+                pass
+            if self._config.active_profile == name:
+                self._config.active_profile = ""
+            self.save()
+            return True
+        except Exception as e:
+            logger.error(f"delete_profile error: {e}")
+            return False
+
+    def switch_profile(self, name: str) -> bool:
+        """Делает указанный профиль активным и копирует его в ai-секцию."""
+        if name not in self._config.profiles:
+            return False
+        try:
+            p = self._config.profiles[name]
+            self._config.ai.provider = p.provider
+            self._config.ai.model = p.model
+            self._config.ai.base_url = p.base_url
+            # Прокидываем сырое значение api_key (строку, что в профиле).
+            # Для get_api_key() — он сам распознает __keyring__/base64.
+            # Но keyring у нас под другим service-name, поэтому достаём ключ
+            # вручную и сохраняем уже под обычным service-name.
+            real_key = self._read_profile_api_key(name, p.api_key)
+            if real_key:
+                # Сохраняем под "обычным" сервисом cli-assistant/api_key_<provider>
+                self.set_api_key(real_key)
+            else:
+                self._config.ai.api_key = ""
+            self._config.active_profile = name
+            self.save()
+            return True
+        except Exception as e:
+            logger.error(f"switch_profile error: {e}")
+            return False
+
+    def update_profile(
+        self,
+        name: str,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ) -> bool:
+        """Обновляет поля существующего профиля."""
+        if name not in self._config.profiles:
+            return False
+        try:
+            p = self._config.profiles[name]
+            if provider is not None:
+                p.provider = provider
+            if model is not None:
+                p.model = model
+            if base_url is not None:
+                p.base_url = base_url
+            if api_key is not None:
+                p.api_key = self._store_profile_api_key(name, api_key)
+            self.save()
+            # Если это активный профиль — синхронизируем ai-секцию
+            if self._config.active_profile == name:
+                self.switch_profile(name)
+            return True
+        except Exception as e:
+            logger.error(f"update_profile error: {e}")
+            return False
 
 
 # Глобальный экземпляр

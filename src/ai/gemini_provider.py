@@ -16,17 +16,7 @@ GEMINI_MODELS = [
     "gemini-1.5-flash-8b",
 ]
 
-DEFAULT_SYSTEM_PROMPT = """Ты — CLI Assistant, AI-ассистент для управления системой через терминал.
-
-Правила работы:
-1. Всегда объясняй что делаешь ПЕРЕД выполнением действия
-2. Предупреждай о потенциально опасных операциях и объясняй риски
-3. Никогда не выполняй rm -rf / или аналоги без явного подтверждения
-4. Создавай бэкапы перед редактированием важных системных файлов
-5. Если просят что-то опасное — объясни риски и предложи безопасную альтернативу
-6. Отвечай на языке пользователя (русский или английский)
-7. Будь конкретным и точным в описании действий
-8. При ошибках — объясняй причину и предлагай решение"""
+from .system_prompt import DEFAULT_SYSTEM_PROMPT
 
 
 class GeminiProvider(BaseProvider):
@@ -146,6 +136,26 @@ class GeminiProvider(BaseProvider):
 
         return history, last_content
 
+    def _clean_schema(self, schema: dict) -> dict:
+        """Удаляет поля JSON Schema, которые Gemini не принимает."""
+        if not isinstance(schema, dict):
+            return schema
+
+        result = {}
+        for key, value in schema.items():
+            if key in ("default", "$schema", "additionalProperties", "examples"):
+                continue
+            if isinstance(value, dict):
+                result[key] = self._clean_schema(value)
+            elif isinstance(value, list):
+                result[key] = [
+                    self._clean_schema(item) if isinstance(item, dict) else item
+                    for item in value
+                ]
+            else:
+                result[key] = value
+        return result
+
     def _convert_tools(self, tools: list[dict]) -> list:
         """Конвертирует tools из OpenAI формата в Gemini формат."""
         import google.generativeai.types as genai_types
@@ -159,7 +169,7 @@ class GeminiProvider(BaseProvider):
                             genai_types.FunctionDeclaration(
                                 name=func["name"],
                                 description=func.get("description", ""),
-                                parameters=func.get("parameters", {}),
+                                parameters=self._clean_schema(func.get("parameters", {})),
                             )
                         ]
                     )

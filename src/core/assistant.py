@@ -61,14 +61,20 @@ class Assistant:
 
     def reload_config(self) -> None:
         """Перезагружает конфигурацию и пересоздаёт провайдер."""
-        self._config_manager.reload()
+        self._config_manager.load()
         self._config = self._config_manager.config
         self._provider = None
         self._safety = SafetyChecker(self._config)
         self._sudo.set_cache_minutes(self._config.session.sudo_cache_minutes)
         self._executor = ToolExecutor(self._safety, self._sudo)
+        self._executor.set_callbacks(
+            on_start=self._on_tool_start,
+            on_done=self._on_tool_done,
+        )
         if self._on_confirm:
             self._safety.set_confirm_callback(self._on_confirm)
+        if self._on_sudo_request:
+            self._sudo.set_password_callback(self._on_sudo_request)
 
     def _get_provider(self):
         """Лениво создаёт провайдер."""

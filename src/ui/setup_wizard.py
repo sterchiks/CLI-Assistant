@@ -259,11 +259,15 @@ class ModelScreen(Screen):
         if not options:
             options = [("(введите вручную)", "")]
 
+        default_model = options[0][1] if options else ""
+        if default_model:
+            self.app.wizard_data.setdefault("model", default_model)
+
         yield Container(
             Static("Шаг 4/6: Выбор модели", id="step-title"),
             Static(""),
             Label("Выберите модель:"),
-            Select(options, id="model-select"),
+            Select(options, id="model-select", value=default_model or Select.NULL),
             Static(""),
             Horizontal(
                 Button("← Назад", id="btn-back"),
@@ -281,6 +285,12 @@ class ModelScreen(Screen):
         if event.button.id == "btn-back":
             self.app.pop_screen()
         elif event.button.id == "btn-next":
+            try:
+                selected = self.query_one("#model-select", Select).value
+                if selected not in (None, Select.NULL, ""):
+                    self.app.wizard_data["model"] = selected
+            except Exception:
+                pass
             self.app.push_screen(SafetyScreen())
 
     CSS = """
@@ -392,6 +402,7 @@ class ThemeScreen(Screen):
         api_key = data.get("api_key", "")
         if api_key:
             cm.set_api_key(api_key)
+            cm.save()
 
     CSS = """
     #theme-container {

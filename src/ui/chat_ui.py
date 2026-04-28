@@ -2,25 +2,111 @@
 
 import asyncio
 import os
+import re
+import shutil
+import uuid
 from datetime import datetime
 from typing import Optional
 
+
+# ─── Markdown sanitizer ───────────────────────────────────────────────────────
+# Модели иногда игнорируют системный промпт и присылают markdown-разметку.
+# Мы рендерим текст в TUI как plain-text, поэтому markdown-символы выглядят
+# мусором. Эта функция чистит markdown потоково: вход — произвольная строка
+# (в т.ч. кусок стриминга), выход — та же строка без markdown-разметки.
+#
+# ВАЖНО: поскольку чанки стриминга могут разрезать markdown-разметку
+# (например, чанк 1 = "**жир", чанк 2 = "ный**"), мы применяем sanitizer
+# к УЖЕ СОБРАННОМУ полному тексту в виджете AssistantMessage, а не к каждому
+# чанку отдельно. См. AssistantMessage.append_text.
+
+_MD_FENCE_RE = re.compile(r"```[a-zA-Z0-9_+\-]*\n?")
+_MD_FENCE_END_RE = re.compile(r"```")
+_MD_INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
+_MD_BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+_MD_BOLD_UND_RE = re.compile(r"__(.+?)__", re.DOTALL)
+_MD_ITALIC_STAR_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
+_MD_ITALIC_UND_RE = re.compile(r"(?<!_)_([^_\n]+)_(?!_)")
+_MD_STRIKE_RE = re.compile(r"~~(.+?)~~", re.DOTALL)
+_MD_HEADING_RE = re.compile(r"^(#{1,6})\s+", re.MULTILINE)
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+_MD_BLOCKQUOTE_RE = re.compile(r"^>\s?", re.MULTILINE)
+_MD_LIST_BULLET_RE = re.compile(r"^(\s*)[-*+]\s+", re.MULTILINE)
+_MD_HR_RE = re.compile(r"^\s*([-*_])\s*\1\s*\1[\s\1]*$", re.MULTILINE)
+
+
+def sanitize_markdown(text: str) -> str:
+    """Удаляет markdown-разметку из текста, возвращая чистый plain-text.
+
+    Что чистится:
+    * блоки кода ```...``` → содержимое без обрамления;
+    * inline `code` → code (без бэктиков);
+    * **bold**, __bold__ → bold;
+    * *italic*, _italic_ → italic (только если не это часть слова);
+    * ~~strike~~ → strike;
+    * заголовки `# Заг` → `Заг`;
+    * markdown-ссылки `[text](url)` → `text (url)`;
+    * blockquote `> ...` → `...`;
+    * маркированные списки `- item` / `* item` → `• item`;
+    * горизонтальные линии (---, ***) → пустая строка.
+
+    Дополнительно: НЕ трогает квадратные скобки в `[[`, чтобы не сломать
+    последующее экранирование Textual markup (мы экранируем `[` отдельно
+    в `AssistantMessage.append_text`).
+    """
+    if not text:
+        return text
+    s = text
+    # 1) Блоки кода — заменяем тройные бэктики на пустоту, оставляя содержимое.
+    s = _MD_FENCE_RE.sub("", s)
+    s = _MD_FENCE_END_RE.sub("", s)
+    # 2) Inline code
+    s = _MD_INLINE_CODE_RE.sub(r"\1", s)
+    # 3) Bold/italic/strike
+    s = _MD_BOLD_RE.sub(r"\1", s)
+    s = _MD_BOLD_UND_RE.sub(r"\1", s)
+    s = _MD_ITALIC_STAR_RE.sub(r"\1", s)
+    s = _MD_ITALIC_UND_RE.sub(r"\1", s)
+    s = _MD_STRIKE_RE.sub(r"\1", s)
+    # 4) Заголовки
+    s = _MD_HEADING_RE.sub("", s)
+    # 5) Ссылки [text](url) → "text (url)"
+    s = _MD_LINK_RE.sub(r"\1 (\2)", s)
+    # 6) Blockquote
+    s = _MD_BLOCKQUOTE_RE.sub("", s)
+    # 7) Маркированные списки → bullet •
+    s = _MD_LIST_BULLET_RE.sub(r"\1• ", s)
+    # 8) Горизонтальные линии
+    s = _MD_HR_RE.sub("", s)
+    return s
+
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical, ScrollableContainer
+from textual.containers import Container, Horizontal, ScrollableContainer, Vertical
 from textual.reactive import reactive
-from textual.widgets import (
-    Button, Footer, Header, Input, Label,
-    Static, RichLog, LoadingIndicator
-)
-from textual.worker import Worker, WorkerState
-from rich.text import Text
-from rich.panel import Panel
-from rich.markdown import Markdown
+from textual.widgets import Button, Footer, Header, Input, Select, Static
 
 from ..core.assistant import Assistant
 from ..settings.config_manager import get_config_manager
 from .themes import get_theme
+
+try:
+    import psutil  # type: ignore
+except Exception:  # pragma: no cover
+    psutil = None  # type: ignore
+
+# Опциональный pynvml для NVIDIA GPU метрик
+try:
+    import pynvml  # type: ignore
+    try:
+        pynvml.nvmlInit()
+        _HAS_NVML = True
+    except Exception:
+        _HAS_NVML = False
+except Exception:  # pragma: no cover
+    pynvml = None  # type: ignore
+    _HAS_NVML = False
 
 
 # ─── Виджеты сообщений ────────────────────────────────────────────────────────
@@ -36,20 +122,66 @@ class UserMessage(Static):
 
 
 class AssistantMessage(Static):
-    """Пузырь сообщения ассистента (выровнен влево)."""
+    """Пузырь сообщения ассистента (выровнен влево).
+
+    Накапливает СЫРОЙ текст модели в `_raw`, при каждом обновлении
+    прогоняет его через `sanitize_markdown` и экранирует все «[», чтобы
+    Textual не пытался интерпретировать их как разметку. К итоговому
+    содержимому добавляется заголовок «🤖 Ассистент <timestamp>».
+
+    ВАЖНО: НЕ переопределяем `_render()` — это внутренний метод Textual,
+    он должен возвращать Visual-объект, а не строку. Вместо этого у нас
+    есть свой helper `_compose_display`, и мы передаём его результат
+    в стандартный `Static.update()`.
+    """
 
     def __init__(self, timestamp: str = "") -> None:
-        ts = f"[dim]🤖 Ассистент  {timestamp}[/dim]\n" if timestamp else "[dim]🤖 Ассистент[/dim]\n"
-        # Используем уникальный ID для каждого сообщения
-        super().__init__(ts, classes="assistant-bubble", id=f"assistant-msg-{id(self)}")
-        self._text = ts
+        if timestamp:
+            self._header = f"[dim]🤖 Ассистент  {timestamp}[/dim]\n"
+        else:
+            self._header = "[dim]🤖 Ассистент[/dim]\n"
+        message_id = f"assistant-msg-{uuid.uuid4().hex[:8]}"
+        super().__init__(self._header, classes="assistant-bubble", id=message_id)
+        # Сырой текст ассистента (без header-разметки и без markdown)
+        self._raw: str = ""
+        # Совместимость со старым кодом: _text используется в _close_current_assistant_bubble
+        self._text: str = self._header
+
+    def _compose_display(self) -> str:
+        """Собирает финальную строку для показа: header + чистый plain-text."""
+        cleaned = sanitize_markdown(self._raw)
+        # Экранируем «[» чтобы Textual не вычислял разметку из текста модели
+        safe = cleaned.replace("[", r"\[")
+        full = self._header + safe
+        self._text = full
+        return full
 
     def append_text(self, chunk: str) -> None:
-        self._text += chunk
-        self.update(self._text)
+        if not chunk:
+            return
+        self._raw += chunk
+        try:
+            self.update(self._compose_display())
+        except Exception:
+            # Если что-то с разметкой пошло не так — показываем максимально безопасную версию
+            try:
+                self.update(self._header + self._raw.replace("[", r"\["))
+            except Exception:
+                pass
 
     def finalize(self) -> None:
-        self.remove_id()
+        # Финальная пере-санитизация на полном тексте — на случай, если
+        # markdown-разметка была разрезана между чанками.
+        try:
+            self.update(self._compose_display())
+        except Exception:
+            pass
+        try:
+            self.remove_id()
+        except Exception:
+            pass
+
+
 
     def remove_id(self) -> None:
         try:
@@ -123,7 +255,7 @@ class ConfirmDialog(Container):
                 self.query_one("#confirm-input", Input).focus()
             except Exception:
                 pass
-        self.call_later(set_focus, 0.05)
+        self.call_later(set_focus)
 
     async def _resolve(self, yes: bool) -> None:
         """Завершает диалог с результатом и возвращает фокус в основной input."""
@@ -176,13 +308,20 @@ class ConfirmDialog(Container):
 class SudoPasswordDialog(Container):
     """Диалог ввода пароля sudo."""
 
-    def __init__(self, callback) -> None:
+    def __init__(
+        self,
+        callback,
+        title: str = "[bold yellow]🔐 Требуется пароль sudo[/bold yellow]",
+        placeholder: str = "Введите пароль sudo...",
+    ) -> None:
         super().__init__(id="sudo-dialog")
         self._callback = callback
+        self._title = title
+        self._placeholder = placeholder
 
     def compose(self) -> ComposeResult:
-        yield Static("[bold yellow]🔐 Требуется пароль sudo[/bold yellow]", id="sudo-title")
-        yield Input(placeholder="Введите пароль sudo...", password=True, id="sudo-input")
+        yield Static(self._title, id="sudo-title")
+        yield Input(placeholder=self._placeholder, password=True, id="sudo-input")
         yield Horizontal(
             Button("Подтвердить", id="btn-sudo-ok", variant="primary"),
             Button("Отмена", id="btn-sudo-cancel"),
@@ -199,15 +338,14 @@ class SudoPasswordDialog(Container):
                 input_widget.focus()
             except Exception:
                 pass
-        # Даём время на рендеринг перед установкой фокуса
-        self.call_later(set_focus, 0.05)
+
+        self.call_later(set_focus)
 
     def on_key(self, event) -> None:
         """Ловим нажатие Escape для закрытия диалога без ввода."""
         try:
-            # Только обрабатываем Escape - закрываем диалог
             if event.key == "escape":
-                self.call_later(self._close_dialog)
+                self._close_dialog()
                 event.stop()
         except Exception:
             pass
@@ -216,12 +354,10 @@ class SudoPasswordDialog(Container):
         """Закрывает диалог и вызывает callback."""
         try:
             self.remove()
-            def call_callback():
-                if asyncio.iscoroutinefunction(self._callback):
-                    asyncio.create_task(self._callback(""))
-                else:
-                    self._callback("")
-            self.call_later(call_callback)
+            if asyncio.iscoroutinefunction(self._callback):
+                asyncio.create_task(self._callback(""))
+            else:
+                self._callback("")
         except Exception:
             pass
 
@@ -280,42 +416,311 @@ class SudoPasswordDialog(Container):
 
 # ─── Боковая панель ───────────────────────────────────────────────────────────
 
-class SidebarWidget(Static):
-    """Боковая панель с системной информацией."""
+def _human_bytes(n: float) -> str:
+    """Преобразует байты в человекочитаемый размер."""
+    try:
+        n = float(n)
+    except Exception:
+        return "—"
+    units = ["Б", "КБ", "МБ", "ГБ", "ТБ", "ПБ"]
+    i = 0
+    while n >= 1024.0 and i < len(units) - 1:
+        n /= 1024.0
+        i += 1
+    if i == 0:
+        return f"{int(n)} {units[i]}"
+    return f"{n:.1f} {units[i]}"
 
-    cpu: reactive[float] = reactive(0.0)
-    ram_used: reactive[str] = reactive("—")
-    ram_total: reactive[str] = reactive("—")
-    disk_used: reactive[str] = reactive("—")
-    disk_total: reactive[str] = reactive("—")
+
+def _bar(percent: float, width: int = 12) -> str:
+    """Рисует ASCII прогресс-бар на `width` символов с цветом по уровню."""
+    try:
+        p = max(0.0, min(100.0, float(percent)))
+    except Exception:
+        p = 0.0
+    filled = int(round(p / 100.0 * width))
+    if p >= 90:
+        color = "red"
+    elif p >= 75:
+        color = "yellow"
+    else:
+        color = "green"
+    bar = "█" * filled + "░" * (width - filled)
+    return f"[{color}]{bar}[/{color}] {p:4.0f}%"
+
+
+class SidebarWidget(Static):
+    """Расширенная боковая панель с метриками системы.
+
+    Показывает: CPU, GPU (если есть NVIDIA + pynvml), RAM, VRAM, диски
+    (с пометкой съёмных), скорости сети, скорости диск I/O, top-5 процессов
+    по памяти, последние действия и текущий путь.
+    """
+
     last_actions: reactive[list] = reactive([])
 
-    def render(self) -> str:
-        actions_str = "\n".join(
-            f"  [green]✓[/green] {a}" for a in self.last_actions[-5:]
-        ) or "  [dim]нет действий[/dim]"
+    # Внутреннее состояние, не reactive — обновляется тиком set_interval.
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._cpu_percent: float = 0.0
+        self._cpu_count: int = 1
+        self._ram_used: int = 0
+        self._ram_total: int = 0
+        self._ram_percent: float = 0.0
 
-        return (
-            f"[bold cyan]СИСТЕМА[/bold cyan]\n"
-            f"CPU: [yellow]{self.cpu:.0f}%[/yellow]\n"
-            f"RAM: [yellow]{self.ram_used}/{self.ram_total}[/yellow]\n"
-            f"Диск: [yellow]{self.disk_used}/{self.disk_total}[/yellow]\n"
-            f"\n[bold cyan]ДЕЙСТВИЯ[/bold cyan]\n"
-            f"{actions_str}\n"
-            f"\n[bold cyan]ПУТЬ[/bold cyan]\n"
-            f"[dim]{self.app.assistant.cwd[:18]}[/dim]"
+        self._gpu_name: str = ""
+        self._gpu_util: float = 0.0
+        self._vram_used: int = 0
+        self._vram_total: int = 0
+        self._vram_percent: float = 0.0
+
+        self._disks: list = []  # [{mount, used, total, percent, removable}]
+        self._net_up: float = 0.0  # B/s
+        self._net_down: float = 0.0
+        self._io_read: float = 0.0
+        self._io_write: float = 0.0
+        self._procs: list = []  # [{name, mem_mb, cpu}]
+
+        # Снимки счётчиков для расчёта скоростей
+        self._last_net = None
+        self._last_io = None
+        self._last_ts = None
+        self._cwd: str = ""
+
+    # ── Сбор метрик ────────────────────────────────────────────────────────
+
+    def collect(self, cwd: str = "") -> None:
+        """Собирает свежие метрики (вызывается из app по таймеру)."""
+        self._cwd = cwd or self._cwd
+        if psutil is None:
+            return
+        try:
+            self._cpu_percent = float(psutil.cpu_percent(interval=None))
+            self._cpu_count = psutil.cpu_count(logical=True) or 1
+            vm = psutil.virtual_memory()
+            self._ram_used = int(vm.used)
+            self._ram_total = int(vm.total)
+            self._ram_percent = float(vm.percent)
+        except Exception:
+            pass
+
+        # Диски
+        try:
+            disks = []
+            removable_devs = set()
+            try:
+                # На Linux у removable-партиций обычно 'removable' в opts отсутствует,
+                # эвристика: device начинается с /dev/sd[a-z] и mountpoint в /media|/run/media
+                for p in psutil.disk_partitions(all=False):
+                    mp = p.mountpoint
+                    if mp.startswith("/media") or mp.startswith("/run/media") or mp.startswith("/mnt"):
+                        removable_devs.add(mp)
+                    if "removable" in (p.opts or "").lower():
+                        removable_devs.add(mp)
+            except Exception:
+                pass
+            try:
+                seen = set()
+                for p in psutil.disk_partitions(all=False):
+                    mp = p.mountpoint
+                    # Игнорируем псевдо-фс
+                    fstype = (p.fstype or "").lower()
+                    if not fstype or fstype in ("squashfs", "tmpfs", "devtmpfs", "proc", "sysfs", "overlay"):
+                        continue
+                    if mp in seen:
+                        continue
+                    seen.add(mp)
+                    try:
+                        u = psutil.disk_usage(mp)
+                    except Exception:
+                        continue
+                    disks.append({
+                        "mount": mp,
+                        "used": int(u.used),
+                        "total": int(u.total),
+                        "percent": float(u.percent),
+                        "removable": mp in removable_devs,
+                    })
+            except Exception:
+                pass
+            # Сортируем: сначала root, потом по размеру
+            disks.sort(key=lambda d: (d["mount"] != "/", -d["total"]))
+            self._disks = disks[:6]
+        except Exception:
+            self._disks = []
+
+        # Сеть и диск I/O — через дельты
+        import time
+        now = time.time()
+        try:
+            net = psutil.net_io_counters()
+            io = psutil.disk_io_counters()
+            if self._last_net is not None and self._last_ts is not None:
+                dt = max(0.001, now - self._last_ts)
+                self._net_up = max(0.0, (net.bytes_sent - self._last_net.bytes_sent) / dt)
+                self._net_down = max(0.0, (net.bytes_recv - self._last_net.bytes_recv) / dt)
+                if io and self._last_io is not None:
+                    self._io_read = max(0.0, (io.read_bytes - self._last_io.read_bytes) / dt)
+                    self._io_write = max(0.0, (io.write_bytes - self._last_io.write_bytes) / dt)
+            self._last_net = net
+            self._last_io = io
+            self._last_ts = now
+        except Exception:
+            pass
+
+        # Top-5 процессов по памяти
+        try:
+            procs = []
+            for p in psutil.process_iter(["name", "memory_info", "cpu_percent"]):
+                try:
+                    info = p.info
+                    mem = info.get("memory_info")
+                    if not mem:
+                        continue
+                    procs.append({
+                        "name": (info.get("name") or "?")[:14],
+                        "mem_mb": int(mem.rss / (1024 * 1024)),
+                        "cpu": float(info.get("cpu_percent") or 0.0),
+                    })
+                except Exception:
+                    continue
+            procs.sort(key=lambda x: x["mem_mb"], reverse=True)
+            self._procs = procs[:5]
+        except Exception:
+            self._procs = []
+
+        # GPU (NVIDIA через NVML — опционально)
+        if _HAS_NVML and pynvml is not None:
+            try:
+                count = pynvml.nvmlDeviceGetCount()
+                if count > 0:
+                    h = pynvml.nvmlDeviceGetHandleByIndex(0)
+                    name = pynvml.nvmlDeviceGetName(h)
+                    if isinstance(name, bytes):
+                        name = name.decode("utf-8", errors="ignore")
+                    self._gpu_name = str(name)[:18]
+                    util = pynvml.nvmlDeviceGetUtilizationRates(h)
+                    self._gpu_util = float(util.gpu)
+                    mem = pynvml.nvmlDeviceGetMemoryInfo(h)
+                    self._vram_used = int(mem.used)
+                    self._vram_total = int(mem.total)
+                    self._vram_percent = (
+                        100.0 * mem.used / mem.total if mem.total else 0.0
+                    )
+            except Exception:
+                pass
+
+        # Принудительный перерендер
+        try:
+            self.refresh()
+        except Exception:
+            pass
+
+    # ── Рендер ─────────────────────────────────────────────────────────────
+
+    def render(self) -> str:
+        lines: list = []
+
+        # CPU
+        lines.append("[bold cyan]ПРОЦЕССОР[/bold cyan]")
+        lines.append(f"CPU x{self._cpu_count}")
+        lines.append(_bar(self._cpu_percent))
+
+        # GPU (если есть)
+        if self._gpu_name:
+            lines.append("")
+            lines.append("[bold cyan]ВИДЕОКАРТА[/bold cyan]")
+            lines.append(f"[dim]{self._gpu_name}[/dim]")
+            lines.append(_bar(self._gpu_util))
+
+        # RAM
+        lines.append("")
+        lines.append("[bold cyan]ПАМЯТЬ[/bold cyan]")
+        lines.append(
+            f"RAM {_human_bytes(self._ram_used)}/{_human_bytes(self._ram_total)}"
+        )
+        lines.append(_bar(self._ram_percent))
+        if self._vram_total > 0:
+            lines.append(
+                f"VRAM {_human_bytes(self._vram_used)}/{_human_bytes(self._vram_total)}"
+            )
+            lines.append(_bar(self._vram_percent))
+
+        # Диски
+        lines.append("")
+        lines.append("[bold cyan]ДИСКИ[/bold cyan]")
+        if not self._disks:
+            lines.append("  [dim]нет данных[/dim]")
+        for d in self._disks:
+            mark = "🔌 " if d["removable"] else ""
+            mp = d["mount"]
+            if len(mp) > 14:
+                mp = mp[:13] + "…"
+            lines.append(f"{mark}{mp}")
+            lines.append(
+                f"  {_human_bytes(d['used'])}/{_human_bytes(d['total'])}"
+            )
+            lines.append(_bar(d["percent"], width=10))
+
+        # Сеть
+        lines.append("")
+        lines.append("[bold cyan]СЕТЬ[/bold cyan]")
+        lines.append(
+            f"↑ {_human_bytes(self._net_up)}/с"
+        )
+        lines.append(
+            f"↓ {_human_bytes(self._net_down)}/с"
         )
 
+        # Диск I/O
+        lines.append("")
+        lines.append("[bold cyan]ДИСК I/O[/bold cyan]")
+        lines.append(f"R {_human_bytes(self._io_read)}/с")
+        lines.append(f"W {_human_bytes(self._io_write)}/с")
+
+        # Топ-процессы
+        lines.append("")
+        lines.append("[bold cyan]ТОП ПРОЦЕССЫ[/bold cyan]")
+        if not self._procs:
+            lines.append("  [dim]нет данных[/dim]")
+        for p in self._procs:
+            lines.append(
+                f"[dim]{p['name']:<14}[/dim] [yellow]{p['mem_mb']}МБ[/yellow]"
+            )
+
+        # Последние действия
+        lines.append("")
+        lines.append("[bold cyan]ДЕЙСТВИЯ[/bold cyan]")
+        if self.last_actions:
+            for a in list(self.last_actions)[-5:]:
+                safe = str(a).replace("[", r"\[")
+                lines.append(f"  [green]✓[/green] {safe}")
+        else:
+            lines.append("  [dim]нет действий[/dim]")
+
+        # Путь
+        lines.append("")
+        lines.append("[bold cyan]ПУТЬ[/bold cyan]")
+        cwd = self._cwd or ""
+        if len(cwd) > 26:
+            cwd = "…" + cwd[-25:]
+        safe_cwd = cwd.replace("[", r"\[")
+        lines.append(f"[dim]{safe_cwd}[/dim]")
+
+        return "\n".join(lines)
+
+    # ── Совместимость со старым API ────────────────────────────────────────
+
     def update_system_info(self, info: dict) -> None:
-        self.cpu = info.get("cpu_percent", 0.0)
-        self.ram_used = info.get("ram_used_human", "—")
-        self.ram_total = info.get("ram_total_human", "—")
-        self.disk_used = info.get("disk_used_human", "—")
-        self.disk_total = info.get("disk_total_human", "—")
+        """Обратная совместимость: подхватывает то, что отдаёт TerminalManager."""
+        try:
+            self._cpu_percent = float(info.get("cpu_percent", self._cpu_percent))
+        except Exception:
+            pass
 
     def add_action(self, action: str) -> None:
         actions = list(self.last_actions)
-        actions.append(action[:20])
+        actions.append(str(action)[:24])
         self.last_actions = actions[-10:]
 
 
@@ -363,10 +768,19 @@ class CLIAssistantApp(App):
                 )
             yield SidebarWidget(id="sidebar")
         with Container(id="input-area"):
-            yield Input(
-                placeholder="Введите сообщение или /команду...",
-                id="message-input",
-            )
+            with Horizontal(id="input-row"):
+                # Селектор активного профиля (слева). Опции выставим в on_mount.
+                yield Select(
+                    options=[("(нет профилей)", Select.BLANK)],
+                    prompt="Профиль",
+                    id="profile-selector",
+                    allow_blank=True,
+                )
+                yield Input(
+                    placeholder="Введите сообщение или /команду...",
+                    id="message-input",
+                )
+                yield Button("➤", id="btn-send", variant="primary")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -374,11 +788,42 @@ class CLIAssistantApp(App):
         theme_css = get_theme(self._config.ui.theme)
         self.css = theme_css
         self._update_header()
-        # Запускаем периодическое обновление системной информации
-        self.set_interval(5.0, self._refresh_system_info)
+        # Заполняем селектор профилей
+        self._refresh_profile_selector()
+        # Запускаем периодическое обновление системной информации (каждые 2с)
+        self.set_interval(2.0, self._refresh_system_info)
         self._refresh_system_info()
         # Адаптируем layout под размер терминала
         self._adapt_layout()
+
+    def _refresh_profile_selector(self) -> None:
+        """Заполняет/обновляет dropdown с профилями.
+
+        Длинные имена обрезаем эллипсисом в подписи, но в качестве value храним
+        полное имя — чтобы переключение работало корректно.
+        """
+        try:
+            sel = self.query_one("#profile-selector", Select)
+            profiles = self._config_manager.get_profiles()
+            active = self._config_manager.get_active_profile()
+            if not profiles:
+                sel.set_options([("(нет профилей)", Select.BLANK)])
+                sel.value = Select.BLANK
+                return
+            # Ширина видимой области = 22 минус рамка/стрелка ≈ 16 символов
+            max_label = 16
+            options = []
+            for name in profiles.keys():
+                label = name if len(name) <= max_label else name[: max_label - 1] + "…"
+                options.append((label, name))
+            sel.set_options(options)
+            if active and active in profiles:
+                try:
+                    sel.value = active
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def on_resize(self) -> None:
         """Адаптируем layout при изменении размера."""
@@ -408,11 +853,8 @@ class CLIAssistantApp(App):
     def _refresh_system_info(self) -> None:
         """Обновляет системную информацию в боковой панели."""
         try:
-            from ..tools.terminal_manager import TerminalManager
-            tm = TerminalManager()
-            info = tm.get_system_info()
             sidebar = self.query_one("#sidebar", SidebarWidget)
-            sidebar.update_system_info(info)
+            sidebar.collect(self.assistant.cwd)
         except Exception:
             pass
 
@@ -434,6 +876,50 @@ class CLIAssistantApp(App):
 
         # Отправляем сообщение ассистенту
         await self._send_message(text)
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Обрабатывает кнопку отправки."""
+        if event.button.id == "btn-send":
+            try:
+                inp = self.query_one("#message-input", Input)
+                text = (inp.value or "").strip()
+                if not text:
+                    return
+                inp.value = ""
+                if text.startswith("/"):
+                    await self._handle_slash_command(text)
+                else:
+                    await self._send_message(text)
+                inp.focus()
+            except Exception:
+                pass
+
+    async def on_select_changed(self, event: Select.Changed) -> None:
+        """Переключение активного профиля через dropdown."""
+        if event.select.id != "profile-selector":
+            return
+        value = event.value
+        if value == Select.BLANK or value is None:
+            return
+        try:
+            ok = self._config_manager.switch_profile(str(value))
+            if ok:
+                self._config = self._config_manager.config
+                self.assistant.reload_config()
+                self._update_header()
+                chat_area = self.query_one("#chat-area", ScrollableContainer)
+                await chat_area.mount(Static(
+                    f"[green]Активный профиль: {value}[/green] "
+                    f"[dim]({self._config.ai.provider} / {self._config.ai.model})[/dim]"
+                ))
+                chat_area.scroll_end(animate=False)
+                # Возвращаем фокус в поле ввода
+                try:
+                    self.query_one("#message-input", Input).focus()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     async def _send_message(self, text: str) -> None:
         """Отправляет сообщение ассистенту и отображает ответ."""
@@ -801,6 +1287,9 @@ class CLIAssistantApp(App):
                 else:
                     await chat_area.mount(Static("[red]Не удалось получить пароль sudo[/red]"))
 
+        elif cmd == "/profile":
+            await self._handle_profile_command(arg)
+
         elif cmd == "/settings":
             await self.action_open_settings()
 
@@ -816,6 +1305,102 @@ class CLIAssistantApp(App):
         chat_area = self.query_one("#chat-area", ScrollableContainer)
         for child in list(chat_area.children):
             child.remove()
+
+    async def _handle_profile_command(self, arg: str) -> None:
+        """Обрабатывает /profile [list | add <name> | delete <name> | <name>]."""
+        chat_area = self.query_one("#chat-area", ScrollableContainer)
+        cm = self._config_manager
+        parts = arg.split(maxsplit=2)
+
+        # /profile  → список
+        if not parts or parts[0] in ("list", "ls"):
+            profiles = cm.get_profiles()
+            active = cm.get_active_profile()
+            if not profiles:
+                await chat_area.mount(Static(
+                    "[yellow]Нет сохранённых профилей.[/yellow]\n"
+                    "[dim]Создайте: /profile add <имя>[/dim]"
+                ))
+                return
+            lines = ["[bold cyan]Профили:[/bold cyan]"]
+            for name, p in profiles.items():
+                marker = "[green]●[/green]" if name == active else "[dim]○[/dim]"
+                provider = p.get("provider", "")
+                model = p.get("model", "")
+                safe_name = str(name).replace("[", r"\[")
+                lines.append(f"  {marker} [bold]{safe_name}[/bold] [dim]({provider} / {model})[/dim]")
+            await chat_area.mount(Static("\n".join(lines)))
+            return
+
+        sub = parts[0].lower()
+
+        # /profile add <name>
+        if sub == "add":
+            if len(parts) < 2:
+                await chat_area.mount(Static(
+                    "[yellow]Использование:[/yellow] /profile add <имя>"
+                ))
+                return
+            name = parts[1].strip()
+            # Используем текущие настройки ai.* как шаблон для нового профиля,
+            # api_key берём в распакованном виде через get_api_key().
+            real_key = cm.get_api_key()
+            ok = cm.add_profile(
+                name=name,
+                provider=self._config.ai.provider,
+                model=self._config.ai.model,
+                api_key=real_key,
+                base_url=self._config.ai.base_url,
+            )
+            if ok:
+                self._refresh_profile_selector()
+                safe_name = name.replace("[", r"\[")
+                await chat_area.mount(Static(
+                    f"[green]✓ Профиль создан:[/green] {safe_name}\n"
+                    f"[dim]Скопированы текущие настройки. Меняйте через /provider, /model, /apikey, /baseurl.[/dim]"
+                ))
+            else:
+                await chat_area.mount(Static(
+                    f"[red]Не удалось создать профиль (возможно, уже существует или пустое имя).[/red]"
+                ))
+            return
+
+        # /profile delete <name>  /  /profile rm <name>
+        if sub in ("delete", "del", "rm", "remove"):
+            if len(parts) < 2:
+                await chat_area.mount(Static(
+                    "[yellow]Использование:[/yellow] /profile delete <имя>"
+                ))
+                return
+            name = parts[1].strip()
+            ok = cm.delete_profile(name)
+            if ok:
+                self._refresh_profile_selector()
+                safe_name = name.replace("[", r"\[")
+                await chat_area.mount(Static(f"[green]✓ Профиль удалён:[/green] {safe_name}"))
+            else:
+                await chat_area.mount(Static(f"[red]Профиль не найден: {name}[/red]"))
+            return
+
+        # /profile switch <name>  или просто  /profile <name>
+        target_name = parts[1].strip() if sub == "switch" and len(parts) >= 2 else parts[0].strip()
+        ok = cm.switch_profile(target_name)
+        if ok:
+            self._config = cm.config
+            self.assistant.reload_config()
+            self._update_header()
+            self._refresh_profile_selector()
+            safe = target_name.replace("[", r"\[")
+            await chat_area.mount(Static(
+                f"[green]✓ Активный профиль:[/green] {safe} "
+                f"[dim]({self._config.ai.provider} / {self._config.ai.model})[/dim]"
+            ))
+        else:
+            safe = target_name.replace("[", r"\[")
+            await chat_area.mount(Static(
+                f"[red]Профиль не найден:[/red] {safe}\n"
+                f"[dim]Список: /profile list[/dim]"
+            ))
 
     # ─── Actions ──────────────────────────────────────────────────────────────
 
@@ -867,9 +1452,43 @@ class CLIAssistantApp(App):
         padding: 0 1;
     }
 
+    #input-row {
+        height: 3;
+        width: 1fr;
+    }
+
+    #profile-selector {
+        width: 22;
+        height: 3;
+        min-width: 22;
+        max-width: 22;
+    }
+
+    #profile-selector SelectCurrent {
+        height: 1;
+        max-height: 1;
+        overflow-x: hidden;
+        overflow-y: hidden;
+        text-overflow: ellipsis;
+    }
+
+    #profile-selector Static {
+        height: 1;
+        max-height: 1;
+        overflow-x: hidden;
+        text-overflow: ellipsis;
+    }
+
     #message-input {
         width: 1fr;
         height: 3;
+    }
+
+    #btn-send {
+        width: 5;
+        height: 3;
+        min-width: 5;
+        margin-left: 1;
     }
 
     .user-bubble {
@@ -949,6 +1568,13 @@ HELP_TEXT = """[bold cyan]📖 Справка CLI Assistant[/bold cyan]
   [cyan]/ls[/cyan]                — содержимое текущей директории
   [cyan]/sudo[/cyan]              — запросить sudo пароль
   [cyan]/sudo clear[/cyan]        — очистить кэш sudo
+
+[bold]Профили (мульти-аккаунт):[/bold]
+  [cyan]/profile[/cyan]                — список профилей
+  [cyan]/profile add \\[имя][/cyan]     — создать профиль из текущих настроек
+  [cyan]/profile delete \\[имя][/cyan]  — удалить профиль
+  [cyan]/profile \\[имя][/cyan]         — переключиться на профиль
+  [dim]Также можно переключаться через выпадающий список слева от поля ввода.[/dim]
 
 [bold]Горячие клавиши:[/bold]
   [cyan]Ctrl+C[/cyan]  — выход
