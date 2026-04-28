@@ -94,11 +94,11 @@ Via system keyring (KWallet, GNOME Keyring, macOS Keychain, Windows Credential L
 
 <div align="center">
 
-<img src="images/chat.png" width="700">
+<img src="images/chat.jpg" width="700">
 
 ### Setup Wizard
 
-<img src="images/install.png" width="700">
+<img src="images/install.jpg" width="700">
 
 ### Themes
 
