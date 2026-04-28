@@ -11,6 +11,14 @@ from ..tools.file_editor import FileEditor
 from ..tools.terminal_manager import TerminalManager
 from ..tools.disk_manager import DiskManager
 from ..tools.sudo_manager import SudoManager
+from ..tools.network_tool import NetworkTool
+from ..tools.package_manager import PackageManager
+from ..tools.process_manager import ProcessManager
+from ..tools.archive_tool import ArchiveTool
+from ..tools.git_tool import GitTool
+from ..tools.service_manager import ServiceManager
+from ..tools.app_manager import AppManager
+from ..tools.cron_tool import CronTool
 from .safety import SafetyChecker, SafetyError
 
 logger = logging.getLogger(__name__)
@@ -300,6 +308,510 @@ TOOL_DEFINITIONS = [
             "required": ["command"],
         },
     },
+    # --- Network ---
+    {
+        "name": "ping",
+        "description": "Пинг хоста (отдельный subprocess)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "host": {"type": "string"},
+                "count": {"type": "integer", "default": 4},
+            },
+            "required": ["host"],
+        },
+    },
+    {
+        "name": "check_port",
+        "description": "Проверить TCP-порт удалённого хоста",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "host": {"type": "string"},
+                "port": {"type": "integer"},
+                "timeout": {"type": "number", "default": 3},
+            },
+            "required": ["host", "port"],
+        },
+    },
+    {
+        "name": "list_open_ports",
+        "description": "Список открытых TCP-портов на этой машине",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "get_network_interfaces",
+        "description": "Сетевые интерфейсы и их адреса",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "download_file",
+        "description": "Скачивает файл по URL",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string"},
+                "destination": {"type": "string"},
+            },
+            "required": ["url", "destination"],
+        },
+    },
+    {
+        "name": "http_request",
+        "description": "HTTP-запрос (GET/POST/PUT/DELETE) с возвратом статуса и тела",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string"},
+                "method": {"type": "string", "default": "GET"},
+                "headers": {"type": "object"},
+                "data": {"type": "string"},
+            },
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "get_public_ip",
+        "description": "Внешний (публичный) IP-адрес",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    # --- PackageManager ---
+    {
+        "name": "install_package",
+        "description": "Установить пакет (apt/dnf/pacman/brew/winget). Системные требуют sudo.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "package": {"type": "string"},
+                "manager": {"type": "string", "default": "auto"},
+            },
+            "required": ["package"],
+        },
+    },
+    {
+        "name": "remove_package",
+        "description": "Удалить пакет (системный или brew/winget)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "package": {"type": "string"},
+                "manager": {"type": "string", "default": "auto"},
+            },
+            "required": ["package"],
+        },
+    },
+    {
+        "name": "update_packages",
+        "description": "Обновить все пакеты системы",
+        "input_schema": {
+            "type": "object",
+            "properties": {"manager": {"type": "string", "default": "auto"}},
+        },
+    },
+    {
+        "name": "search_package",
+        "description": "Поиск пакетов в репозиториях",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "manager": {"type": "string", "default": "auto"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "list_installed_packages",
+        "description": "Список установленных пакетов",
+        "input_schema": {
+            "type": "object",
+            "properties": {"manager": {"type": "string", "default": "auto"}},
+        },
+    },
+    {
+        "name": "pip_install",
+        "description": "Установить Python-пакет (pip --user по умолчанию)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "package": {"type": "string"},
+                "user": {"type": "boolean", "default": True},
+            },
+            "required": ["package"],
+        },
+    },
+    {
+        "name": "npm_install",
+        "description": "Установить npm-пакет",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "package": {"type": "string"},
+                "global_": {"type": "boolean", "default": False},
+                "cwd": {"type": "string", "default": ""},
+            },
+            "required": ["package"],
+        },
+    },
+    # --- ProcessManager (psutil) ---
+    {
+        "name": "list_processes",
+        "description": "Список процессов с сортировкой (cpu/memory/name/pid)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sort_by": {"type": "string", "default": "cpu"},
+                "limit": {"type": "integer", "default": 20},
+            },
+        },
+    },
+    {
+        "name": "find_process",
+        "description": "Поиск процессов по имени/cmdline",
+        "input_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "get_process_info",
+        "description": "Детальная информация о процессе по PID",
+        "input_schema": {
+            "type": "object",
+            "properties": {"pid": {"type": "integer"}},
+            "required": ["pid"],
+        },
+    },
+    {
+        "name": "get_top_processes",
+        "description": "Топ N процессов по потреблению памяти",
+        "input_schema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "default": 5}},
+        },
+    },
+    {
+        "name": "kill_process_advanced",
+        "description": "Завершить процесс по PID (force=True для SIGKILL)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid": {"type": "integer"},
+                "force": {"type": "boolean", "default": False},
+            },
+            "required": ["pid"],
+        },
+    },
+    # --- ArchiveTool ---
+    {
+        "name": "create_archive",
+        "description": "Создать архив (zip/tar/tar.gz/tar.bz2/tar.xz)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "source": {"type": "string"},
+                "destination": {"type": "string"},
+                "format": {"type": "string", "default": "tar.gz"},
+            },
+            "required": ["source", "destination"],
+        },
+    },
+    {
+        "name": "extract_archive",
+        "description": "Распаковать архив (zip/tar/*) в директорию",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "source": {"type": "string"},
+                "destination": {"type": "string"},
+            },
+            "required": ["source", "destination"],
+        },
+    },
+    {
+        "name": "list_archive",
+        "description": "Список файлов в архиве",
+        "input_schema": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "get_archive_size",
+        "description": "Размер архива и суммарный размер после распаковки",
+        "input_schema": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+        },
+    },
+    # --- GitTool ---
+    {
+        "name": "git_status",
+        "description": "git status (короткий вывод)",
+        "input_schema": {
+            "type": "object",
+            "properties": {"cwd": {"type": "string", "default": "."}},
+        },
+    },
+    {
+        "name": "git_log",
+        "description": "История коммитов",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "cwd": {"type": "string", "default": "."},
+                "limit": {"type": "integer", "default": 10},
+            },
+        },
+    },
+    {
+        "name": "git_commit",
+        "description": "git add -A + git commit -m",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "message": {"type": "string"},
+                "add_all": {"type": "boolean", "default": True},
+                "cwd": {"type": "string", "default": "."},
+            },
+            "required": ["message"],
+        },
+    },
+    {
+        "name": "git_push",
+        "description": "git push",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "remote": {"type": "string", "default": "origin"},
+                "branch": {"type": "string", "default": ""},
+                "cwd": {"type": "string", "default": "."},
+            },
+        },
+    },
+    {
+        "name": "git_pull",
+        "description": "git pull",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "remote": {"type": "string", "default": "origin"},
+                "cwd": {"type": "string", "default": "."},
+            },
+        },
+    },
+    {
+        "name": "git_clone",
+        "description": "git clone",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string"},
+                "destination": {"type": "string", "default": ""},
+            },
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "git_branch",
+        "description": "Список веток + текущая ветка",
+        "input_schema": {
+            "type": "object",
+            "properties": {"cwd": {"type": "string", "default": "."}},
+        },
+    },
+    {
+        "name": "git_checkout",
+        "description": "git checkout (create=True для -b)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "branch": {"type": "string"},
+                "create": {"type": "boolean", "default": False},
+                "cwd": {"type": "string", "default": "."},
+            },
+            "required": ["branch"],
+        },
+    },
+    {
+        "name": "git_diff",
+        "description": "git diff (несохранённые изменения)",
+        "input_schema": {
+            "type": "object",
+            "properties": {"cwd": {"type": "string", "default": "."}},
+        },
+    },
+    # --- ServiceManager ---
+    {
+        "name": "list_services",
+        "description": "Список systemd-сервисов (filter: all/running/failed/inactive)",
+        "input_schema": {
+            "type": "object",
+            "properties": {"status_filter": {"type": "string", "default": "all"}},
+        },
+    },
+    {
+        "name": "service_status",
+        "description": "Статус systemd-сервиса",
+        "input_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "start_service",
+        "description": "Запустить systemd-сервис (требует sudo)",
+        "input_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "stop_service",
+        "description": "Остановить systemd-сервис (требует sudo)",
+        "input_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "restart_service",
+        "description": "Перезапустить systemd-сервис (требует sudo)",
+        "input_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "enable_service",
+        "description": "Включить автозапуск сервиса (требует sudo)",
+        "input_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "disable_service",
+        "description": "Отключить автозапуск сервиса (требует sudo)",
+        "input_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "get_service_logs",
+        "description": "Логи systemd-сервиса через journalctl",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "lines": {"type": "integer", "default": 50},
+            },
+            "required": ["name"],
+        },
+    },
+    # --- AppManager ---
+    {
+        "name": "open_application",
+        "description": "Открыть GUI-приложение, опционально на указанном рабочем столе",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "app_name": {"type": "string"},
+                "workspace": {"type": "integer", "default": 1},
+                "args": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["app_name"],
+        },
+    },
+    {
+        "name": "close_application",
+        "description": "Закрыть приложение по имени или PID",
+        "input_schema": {
+            "type": "object",
+            "properties": {"identifier": {"type": "string"}},
+            "required": ["identifier"],
+        },
+    },
+    {
+        "name": "switch_workspace",
+        "description": "Переключиться на рабочий стол (1-based)",
+        "input_schema": {
+            "type": "object",
+            "properties": {"workspace": {"type": "integer"}},
+            "required": ["workspace"],
+        },
+    },
+    {
+        "name": "move_window_to_workspace",
+        "description": "Переместить окно (по подстроке заголовка) на другой рабочий стол",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "window_title": {"type": "string"},
+                "workspace": {"type": "integer"},
+            },
+            "required": ["window_title", "workspace"],
+        },
+    },
+    {
+        "name": "list_open_applications",
+        "description": "Список открытых GUI-окон с PID/title/workspace",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    # --- CronTool ---
+    {
+        "name": "list_crons",
+        "description": "Список cron-заданий текущего пользователя",
+        "input_schema": {
+            "type": "object",
+            "properties": {"user": {"type": "string", "default": "current"}},
+        },
+    },
+    {
+        "name": "add_cron",
+        "description": "Добавить cron-задание. schedule поддерживает '* * * * *' и человеческий вид: 'every 5 minutes', 'daily', 'every day at 9:30'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "schedule": {"type": "string"},
+                "command": {"type": "string"},
+                "comment": {"type": "string", "default": ""},
+            },
+            "required": ["schedule", "command"],
+        },
+    },
+    {
+        "name": "remove_cron",
+        "description": "Удалить cron-задание по индексу (из list_crons)",
+        "input_schema": {
+            "type": "object",
+            "properties": {"index": {"type": "integer"}},
+            "required": ["index"],
+        },
+    },
+    {
+        "name": "edit_cron",
+        "description": "Изменить расписание/команду существующего cron-задания",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "index": {"type": "integer"},
+                "schedule": {"type": "string", "default": ""},
+                "command": {"type": "string", "default": ""},
+            },
+            "required": ["index"],
+        },
+    },
 ]
 
 # Деструктивные инструменты требующие подтверждения
@@ -344,6 +856,14 @@ class ToolExecutor:
         self._file_editor = FileEditor()
         self._terminal = TerminalManager()
         self._disk = DiskManager()
+        self._network = NetworkTool()
+        self._packages = PackageManager()
+        self._processes = ProcessManager()
+        self._archives = ArchiveTool()
+        self._git = GitTool()
+        self._services = ServiceManager()
+        self._apps = AppManager()
+        self._cron = CronTool()
         # Callback для уведомления UI о выполнении инструмента
         self._on_tool_start: Optional[Callable[[str, dict], None]] = None
         self._on_tool_done: Optional[Callable[[str, Any, float], None]] = None
@@ -535,6 +1055,198 @@ class ToolExecutor:
                 if not confirmed2:
                     return {"cancelled": True}
             return await self._sudo.run_as_root(inp["command"])
+
+        # --- NetworkTool ---
+        elif tool_name == "ping":
+            return await self._network.ping(inp["host"], inp.get("count", 4))
+        elif tool_name == "check_port":
+            return await self._network.check_port(
+                inp["host"], inp["port"], inp.get("timeout", 3)
+            )
+        elif tool_name == "list_open_ports":
+            return self._network.list_open_ports()
+        elif tool_name == "get_network_interfaces":
+            return self._network.get_network_interfaces()
+        elif tool_name == "download_file":
+            self._safety.check_path(inp["destination"])
+            return await self._network.download_file(inp["url"], inp["destination"])
+        elif tool_name == "http_request":
+            return await self._network.http_request(
+                inp["url"],
+                inp.get("method", "GET"),
+                inp.get("headers"),
+                inp.get("data"),
+            )
+        elif tool_name == "get_public_ip":
+            return await self._network.get_public_ip()
+
+        # --- PackageManager ---
+        elif tool_name == "install_package":
+            confirmed = await self._safety.confirm_destructive(
+                "Установка пакета", inp["package"]
+            )
+            if not confirmed:
+                return {"cancelled": True}
+            return await self._packages.install(inp["package"], inp.get("manager", "auto"), self._sudo)
+        elif tool_name == "remove_package":
+            confirmed = await self._safety.confirm_destructive(
+                "Удаление пакета", inp["package"]
+            )
+            if not confirmed:
+                return {"cancelled": True}
+            return await self._packages.remove(inp["package"], inp.get("manager", "auto"), self._sudo)
+        elif tool_name == "update_packages":
+            confirmed = await self._safety.confirm_destructive(
+                "Обновление всех пакетов системы", "update_packages"
+            )
+            if not confirmed:
+                return {"cancelled": True}
+            return await self._packages.update(inp.get("manager", "auto"), self._sudo)
+        elif tool_name == "search_package":
+            return await self._packages.search(inp["query"], inp.get("manager", "auto"))
+        elif tool_name == "list_installed_packages":
+            return await self._packages.list_installed(inp.get("manager", "auto"))
+        elif tool_name == "pip_install":
+            return await self._packages.pip_install(inp["package"], inp.get("user", True))
+        elif tool_name == "npm_install":
+            return await self._packages.npm_install(
+                inp["package"], inp.get("global_", False), inp.get("cwd") or None
+            )
+
+        # --- ProcessManager ---
+        elif tool_name == "list_processes":
+            return self._processes.list_processes(
+                inp.get("sort_by", "cpu"), inp.get("limit", 20)
+            )
+        elif tool_name == "find_process":
+            return self._processes.find_process(inp["name"])
+        elif tool_name == "get_process_info":
+            return self._processes.get_process_info(inp["pid"])
+        elif tool_name == "get_top_processes":
+            return self._processes.get_top_processes(inp.get("limit", 5))
+        elif tool_name == "kill_process_advanced":
+            confirmed = await self._safety.confirm_destructive(
+                "Завершение процесса (advanced)", f"PID: {inp['pid']} force={inp.get('force', False)}"
+            )
+            if not confirmed:
+                return {"cancelled": True}
+            return self._processes.kill(inp["pid"], inp.get("force", False))
+
+        # --- ArchiveTool ---
+        elif tool_name == "create_archive":
+            self._safety.check_path(inp["source"])
+            return self._archives.create_archive(
+                inp["source"], inp["destination"], inp.get("format", "tar.gz")
+            )
+        elif tool_name == "extract_archive":
+            self._safety.check_path(inp["source"])
+            self._safety.check_path(inp["destination"])
+            return self._archives.extract_archive(inp["source"], inp["destination"])
+        elif tool_name == "list_archive":
+            self._safety.check_path(inp["path"])
+            return self._archives.list_archive(inp["path"])
+        elif tool_name == "get_archive_size":
+            self._safety.check_path(inp["path"])
+            return self._archives.get_archive_size(inp["path"])
+
+        # --- GitTool ---
+        elif tool_name == "git_status":
+            return await self._git.status(inp.get("cwd", "."))
+        elif tool_name == "git_log":
+            return await self._git.log(inp.get("cwd", "."), inp.get("limit", 10))
+        elif tool_name == "git_commit":
+            return await self._git.commit(
+                inp["message"], inp.get("add_all", True), inp.get("cwd", ".")
+            )
+        elif tool_name == "git_push":
+            return await self._git.push(
+                inp.get("remote", "origin"), inp.get("branch", "") or None, inp.get("cwd", ".")
+            )
+        elif tool_name == "git_pull":
+            return await self._git.pull(inp.get("remote", "origin"), inp.get("cwd", "."))
+        elif tool_name == "git_clone":
+            return await self._git.clone(inp["url"], inp.get("destination", "") or None)
+        elif tool_name == "git_branch":
+            return await self._git.branch(inp.get("cwd", "."))
+        elif tool_name == "git_checkout":
+            return await self._git.checkout(
+                inp["branch"], inp.get("create", False), inp.get("cwd", ".")
+            )
+        elif tool_name == "git_diff":
+            return await self._git.diff(inp.get("cwd", "."))
+
+        # --- ServiceManager ---
+        elif tool_name == "list_services":
+            return await self._services.list_services(inp.get("status_filter", "all"))
+        elif tool_name == "service_status":
+            return await self._services.status(inp["name"])
+        elif tool_name == "start_service":
+            confirmed = await self._safety.confirm_sudo(f"systemctl start {inp['name']}")
+            if not confirmed:
+                return {"cancelled": True}
+            return await self._services.start(inp["name"], self._sudo)
+        elif tool_name == "stop_service":
+            confirmed = await self._safety.confirm_sudo(f"systemctl stop {inp['name']}")
+            if not confirmed:
+                return {"cancelled": True}
+            return await self._services.stop(inp["name"], self._sudo)
+        elif tool_name == "restart_service":
+            confirmed = await self._safety.confirm_sudo(f"systemctl restart {inp['name']}")
+            if not confirmed:
+                return {"cancelled": True}
+            return await self._services.restart(inp["name"], self._sudo)
+        elif tool_name == "enable_service":
+            confirmed = await self._safety.confirm_sudo(f"systemctl enable {inp['name']}")
+            if not confirmed:
+                return {"cancelled": True}
+            return await self._services.enable(inp["name"], self._sudo)
+        elif tool_name == "disable_service":
+            confirmed = await self._safety.confirm_sudo(f"systemctl disable {inp['name']}")
+            if not confirmed:
+                return {"cancelled": True}
+            return await self._services.disable(inp["name"], self._sudo)
+        elif tool_name == "get_service_logs":
+            return await self._services.get_logs(inp["name"], inp.get("lines", 50))
+
+        # --- AppManager ---
+        elif tool_name == "open_application":
+            return self._apps.open_application(
+                inp["app_name"], inp.get("workspace", 1), inp.get("args")
+            )
+        elif tool_name == "close_application":
+            confirmed = await self._safety.confirm_destructive(
+                "Закрытие приложения", inp["identifier"]
+            )
+            if not confirmed:
+                return {"cancelled": True}
+            return self._apps.close_application(inp["identifier"])
+        elif tool_name == "switch_workspace":
+            return self._apps.switch_workspace(inp["workspace"])
+        elif tool_name == "move_window_to_workspace":
+            return self._apps.move_window_to_workspace(
+                inp["window_title"], inp["workspace"]
+            )
+        elif tool_name == "list_open_applications":
+            return self._apps.list_open_applications()
+
+        # --- CronTool ---
+        elif tool_name == "list_crons":
+            return self._cron.list_crons(inp.get("user", "current"))
+        elif tool_name == "add_cron":
+            return self._cron.add_cron(
+                inp["schedule"], inp["command"], inp.get("comment", "")
+            )
+        elif tool_name == "remove_cron":
+            confirmed = await self._safety.confirm_destructive(
+                "Удаление cron-задания", f"index: {inp['index']}"
+            )
+            if not confirmed:
+                return {"cancelled": True}
+            return self._cron.remove_cron(inp["index"])
+        elif tool_name == "edit_cron":
+            return self._cron.edit_cron(
+                inp["index"], inp.get("schedule", ""), inp.get("command", "")
+            )
 
         else:
             return {"error": f"Неизвестный инструмент: {tool_name}"}

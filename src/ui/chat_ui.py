@@ -86,22 +86,91 @@ class ToolCallWidget(Static):
         self.update(content)
 
 
-class ConfirmDialog(Static):
-    """Диалог подтверждения опасного действия."""
+class ConfirmDialog(Container):
+    """Диалог подтверждения опасного действия (Y/n + Enter или кнопки)."""
+
+    can_focus = True
 
     def __init__(self, action: str, target: str, callback) -> None:
-        content = (
-            f"[bold yellow]⚠️  ПОДТВЕРЖДЕНИЕ ДЕЙСТВИЯ[/bold yellow]\n\n"
-            f"[white]{action}[/white]\n"
-            f"[cyan]{target[:60]}[/cyan]\n\n"
-            f"Продолжить? [[bold green]Y[/bold green]/[bold red]n[/bold red]]"
-        )
-        super().__init__(content, classes="confirm-dialog")
+        super().__init__(classes="confirm-dialog")
         self._callback = callback
+        self._action = str(action)
+        self._target = str(target)[:200]
+        self._done = False
 
-    async def confirm(self, yes: bool) -> None:
-        await self._callback(yes)
-        self.remove()
+    def compose(self) -> ComposeResult:
+        safe_action = self._action.replace("[", r"\[")
+        safe_target = self._target.replace("[", r"\[")
+        yield Static(
+            f"[bold yellow]⚠️  ПОДТВЕРЖДЕНИЕ ДЕЙСТВИЯ[/bold yellow]\n\n"
+            f"[white]{safe_action}[/white]\n"
+            f"[cyan]{safe_target}[/cyan]\n\n"
+            f"Введите [bold green]y[/bold green] для подтверждения "
+            f"или [bold red]n[/bold red] для отмены, затем Enter:",
+            id="confirm-text",
+        )
+        yield Input(placeholder="y / n", id="confirm-input")
+        yield Horizontal(
+            Button("✅ Да (y)", id="btn-confirm-yes", variant="success"),
+            Button("❌ Нет (n)", id="btn-confirm-no", variant="error"),
+            id="confirm-buttons",
+        )
+
+    def on_mount(self) -> None:
+        """Ставим фокус на поле ввода при открытии."""
+        def set_focus(*args, **kwargs):
+            try:
+                self.query_one("#confirm-input", Input).focus()
+            except Exception:
+                pass
+        self.call_later(set_focus, 0.05)
+
+    async def _resolve(self, yes: bool) -> None:
+        """Завершает диалог с результатом и возвращает фокус в основной input."""
+        if self._done:
+            return
+        self._done = True
+        try:
+            self.remove()
+        except Exception:
+            pass
+        try:
+            if asyncio.iscoroutinefunction(self._callback):
+                await self._callback(yes)
+            else:
+                self._callback(yes)
+        except Exception:
+            pass
+        # Возвращаем фокус в основное поле ввода
+        try:
+            app = self.app
+            if app:
+                app.query_one("#message-input", Input).focus()
+        except Exception:
+            pass
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Обрабатываем Enter в поле ввода (y/yes/да → True, иначе False)."""
+        if event.input.id == "confirm-input":
+            value = (event.value or "").strip().lower()
+            yes = value in ("y", "yes", "д", "да", "")  # пустая строка = Y по умолчанию
+            event.stop()
+            await self._resolve(yes)
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-confirm-yes":
+            await self._resolve(True)
+        elif event.button.id == "btn-confirm-no":
+            await self._resolve(False)
+
+    def on_key(self, event) -> None:
+        """Escape = отмена."""
+        try:
+            if event.key == "escape":
+                event.stop()
+                asyncio.create_task(self._resolve(False))
+        except Exception:
+            pass
 
 
 class SudoPasswordDialog(Container):
@@ -187,10 +256,24 @@ class SudoPasswordDialog(Container):
         border: round #ff9800;
         padding: 1 2;
         margin: 1 2;
-        height: auto;
+        height: 11;
+        min-height: 11;
+        width: 100%;
+        layer: dialog;
     }
-    #sudo-title { color: #ff9800; margin-bottom: 1; }
-    #sudo-buttons { margin-top: 1; }
+    #sudo-title {
+        color: #ff9800;
+        margin-bottom: 1;
+        height: 1;
+    }
+    #sudo-input {
+        height: 3;
+        margin-bottom: 1;
+    }
+    #sudo-buttons {
+        height: 3;
+        margin-top: 0;
+    }
     #sudo-buttons Button { margin-right: 1; }
     """
 
@@ -387,14 +470,14 @@ class CLIAssistantApp(App):
 
                 if event_type == "text":
                     chunk = event["content"]
-                    if self._current_assistant_widget:
-                        self.call_later(
-                            self._current_assistant_widget.append_text, chunk
-                        )
+                    # Если текущего пузыря нет (был сброшен после tool_done) — создаём новый
+                    self.call_later(self._append_text_chunk, chunk)
 
                 elif event_type == "tool_start":
                     tool_name = event.get("tool_name", "")
                     tool_input = event.get("tool_input", {})
+                    # Перед показом tool-call виджета закрываем текущий пузырь ассистента
+                    self.call_later(self._close_current_assistant_bubble)
                     if self._config.ui.show_tool_calls:
                         self.call_later(
                             self._add_tool_widget, tool_name, tool_input
@@ -406,8 +489,13 @@ class CLIAssistantApp(App):
                         self.call_later(
                             self._current_tool_widget.set_done, 0.0
                         )
-                    sidebar = self.query_one("#sidebar", SidebarWidget)
-                    self.call_later(sidebar.add_action, tool_name)
+                    # Сбрасываем tool-виджет — следующий тул будет в новом
+                    self.call_later(self._reset_current_tool_widget)
+                    try:
+                        sidebar = self.query_one("#sidebar", SidebarWidget)
+                        self.call_later(sidebar.add_action, tool_name)
+                    except Exception:
+                        pass
 
                 elif event_type == "error":
                     error = event.get("error", "Неизвестная ошибка")
@@ -417,6 +505,52 @@ class CLIAssistantApp(App):
             self.call_later(self._show_error, str(e))
         finally:
             self.call_later(self._finish_response)
+
+    def _append_text_chunk(self, chunk: str) -> None:
+        """Добавляет чанк текста в текущий пузырь ассистента, создавая его при необходимости."""
+        try:
+            if self._current_assistant_widget is None:
+                # Создаём новый пузырь под tool-call'ом
+                chat_area = self.query_one("#chat-area", ScrollableContainer)
+                ts = datetime.now().strftime("%H:%M")
+                widget = AssistantMessage(ts)
+                self._current_assistant_widget = widget
+                self.call_later(chat_area.mount, widget)
+                # Добавляем чанк после монтирования
+                self.call_later(widget.append_text, chunk)
+                self.call_later(lambda: chat_area.scroll_end(animate=False))
+            else:
+                self._current_assistant_widget.append_text(chunk)
+                try:
+                    chat_area = self.query_one("#chat-area", ScrollableContainer)
+                    chat_area.scroll_end(animate=False)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _close_current_assistant_bubble(self) -> None:
+        """Закрывает текущий пузырь ассистента (перед показом tool-call виджета)."""
+        if self._current_assistant_widget is not None:
+            try:
+                # Если пузырь содержит только заголовок — удаляем, иначе финализируем
+                widget = self._current_assistant_widget
+                # _text у пузыря — заголовок ts. Если equals — пустой пузырь
+                if hasattr(widget, "_text"):
+                    header_only = widget._text.endswith("[/dim]\n") and len(widget._text) < 80
+                    if header_only:
+                        widget.remove()
+                    else:
+                        widget.finalize()
+                else:
+                    widget.finalize()
+            except Exception:
+                pass
+            self._current_assistant_widget = None
+
+    def _reset_current_tool_widget(self) -> None:
+        """Сбрасывает ссылку на текущий tool-call виджет."""
+        self._current_tool_widget = None
 
     def _add_tool_widget(self, tool_name: str, tool_input: dict) -> None:
         """Добавляет виджет вызова инструмента в чат."""
@@ -433,8 +567,10 @@ class CLIAssistantApp(App):
         """Показывает сообщение об ошибке в чате."""
         try:
             chat_area = self.query_one("#chat-area", ScrollableContainer)
+            # Экранируем [ чтобы Textual markup не падал на текстах вида "[Errno 2]"
+            safe_error = str(error).replace("[", r"\[")
             error_widget = Static(
-                f"[bold red]❌ Ошибка:[/bold red] {error}",
+                f"[bold red]❌ Ошибка:[/bold red] {safe_error}",
                 classes="error-message"
             )
             self.call_later(chat_area.mount, error_widget)
@@ -459,32 +595,67 @@ class CLIAssistantApp(App):
 
     async def _on_confirm_request(self, action: str, target: str) -> bool:
         """Callback для запроса подтверждения от UI."""
-        future: asyncio.Future[bool] = asyncio.get_event_loop().create_future()
+        loop = asyncio.get_event_loop()
+        future: asyncio.Future[bool] = loop.create_future()
         self._pending_confirm = future
 
-        def show_dialog():
+        def _resolve(yes: bool) -> None:
+            if not future.done():
+                loop.call_soon_threadsafe(future.set_result, yes)
+
+        async def show_dialog():
             try:
-                chat_area = self.query_one("#chat-area", ScrollableContainer)
-                dialog = ConfirmDialog(action, target, lambda yes: future.set_result(yes))
-                self.call_later(chat_area.mount, dialog)
-            except Exception:
-                future.set_result(False)
+                # Удаляем существующие диалоги
+                for old in list(self.query(".confirm-dialog")):
+                    try:
+                        old.remove()
+                    except Exception:
+                        pass
+                dialog = ConfirmDialog(action, target, _resolve)
+                # Монтируем перед #input-area, ПОВЕРХ чата (не внутри scrollable)
+                await self.mount(dialog, before=self.query_one("#input-area"))
+                # Ставим фокус явно после монтирования
+                await asyncio.sleep(0.05)
+                try:
+                    dialog.query_one("#confirm-input", Input).focus()
+                except Exception:
+                    pass
+            except Exception as e:
+                if not future.done():
+                    future.set_result(False)
 
         self.call_later(show_dialog)
         return await future
 
     async def _on_sudo_request(self) -> str:
         """Callback для запроса пароля sudo от UI."""
-        future: asyncio.Future[str] = asyncio.get_event_loop().create_future()
+        loop = asyncio.get_event_loop()
+        future: asyncio.Future[str] = loop.create_future()
         self._pending_sudo = future
 
-        def show_sudo_dialog():
+        def _resolve(pwd: str) -> None:
+            if not future.done():
+                loop.call_soon_threadsafe(future.set_result, pwd)
+
+        async def show_sudo_dialog():
             try:
-                chat_area = self.query_one("#chat-area", ScrollableContainer)
-                dialog = SudoPasswordDialog(lambda pwd: future.set_result(pwd))
-                self.call_later(chat_area.mount, dialog)
+                # Удаляем существующие диалоги sudo
+                for old in list(self.query("#sudo-dialog")):
+                    try:
+                        old.remove()
+                    except Exception:
+                        pass
+                dialog = SudoPasswordDialog(_resolve)
+                # Монтируем перед #input-area, ПОВЕРХ чата
+                await self.mount(dialog, before=self.query_one("#input-area"))
+                await asyncio.sleep(0.05)
+                try:
+                    dialog.query_one("#sudo-input", Input).focus()
+                except Exception:
+                    pass
             except Exception:
-                future.set_result("")
+                if not future.done():
+                    future.set_result("")
 
         self.call_later(show_sudo_dialog)
         return await future
@@ -587,19 +758,22 @@ class CLIAssistantApp(App):
                 try:
                     self.assistant.cwd = arg
                     self.sub_title = self.assistant.cwd
-                    await chat_area.mount(Static(f"[green]Рабочая директория: {self.assistant.cwd}[/green]"))
+                    safe_cwd = str(self.assistant.cwd).replace("[", r"\[")
+                    await chat_area.mount(Static(f"[green]Рабочая директория: {safe_cwd}[/green]"))
                 except ValueError as e:
-                    await chat_area.mount(Static(f"[red]{e}[/red]", classes="error-message"))
+                    safe_e = str(e).replace("[", r"\[")
+                    await chat_area.mount(Static(f"[red]{safe_e}[/red]", classes="error-message"))
 
         elif cmd == "/ls":
             from ..tools.file_reader import FileReader
             fr = FileReader()
             items = fr.list_directory(self.assistant.cwd, show_hidden=False, recursive=False)
             lines = "\n".join(
-                f"  {'📁' if i.get('is_dir') else '📄'} {i['name']}"
+                f"  {'📁' if i.get('is_dir') else '📄'} {str(i['name']).replace('[', chr(92) + '[')}"
                 for i in (items if isinstance(items, list) else [])
             )
-            await chat_area.mount(Static(f"[cyan]{self.assistant.cwd}[/cyan]\n{lines or '(пусто)'}"))
+            safe_cwd = str(self.assistant.cwd).replace("[", r"\[")
+            await chat_area.mount(Static(f"[cyan]{safe_cwd}[/cyan]\n{lines or '(пусто)'}"))
 
         elif cmd == "/history":
             history = self.assistant.get_history()
@@ -741,6 +915,19 @@ class CLIAssistantApp(App):
         border: round #ff9800;
         margin: 1 2;
         padding: 1 2;
+        height: auto;
+    }
+    .confirm-dialog #confirm-text {
+        margin-bottom: 1;
+    }
+    .confirm-dialog #confirm-input {
+        margin-bottom: 1;
+    }
+    .confirm-dialog #confirm-buttons {
+        height: 3;
+    }
+    .confirm-dialog #confirm-buttons Button {
+        margin-right: 1;
     }
     """
 
@@ -750,15 +937,15 @@ HELP_TEXT = """[bold cyan]📖 Справка CLI Assistant[/bold cyan]
 [bold]Slash-команды:[/bold]
   [cyan]/help[/cyan]              — эта справка
   [cyan]/settings[/cyan]          — открыть настройки
-  [cyan]/provider [name][/cyan]   — сменить провайдера (anthropic/gemini/openai_compatible)
-  [cyan]/model [name][/cyan]      — сменить модель
-  [cyan]/theme [name][/cyan]      — сменить тему (dark/light/cyberpunk/nord/solarized)
+  [cyan]/provider \\[name][/cyan]   — сменить провайдера (anthropic/gemini/openai_compatible)
+  [cyan]/model \\[name][/cyan]      — сменить модель
+  [cyan]/theme \\[name][/cyan]      — сменить тему (dark/light/cyberpunk/nord/solarized)
   [cyan]/apikey[/cyan]            — изменить API ключ
-  [cyan]/baseurl [url][/cyan]     — изменить base URL
+  [cyan]/baseurl \\[url][/cyan]     — изменить base URL
   [cyan]/clear[/cyan]             — очистить историю чата
   [cyan]/history[/cyan]           — показать статистику истории
-  [cyan]/export [path][/cyan]     — экспортировать историю (json/md)
-  [cyan]/cd [path][/cyan]         — сменить рабочую директорию
+  [cyan]/export \\[path][/cyan]     — экспортировать историю (json/md)
+  [cyan]/cd \\[path][/cyan]         — сменить рабочую директорию
   [cyan]/ls[/cyan]                — содержимое текущей директории
   [cyan]/sudo[/cyan]              — запросить sudo пароль
   [cyan]/sudo clear[/cyan]        — очистить кэш sudo

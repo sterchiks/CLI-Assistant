@@ -161,6 +161,12 @@ class ApiKeyScreen(Screen):
 
         yield Container(*widgets, id="apikey-container")
 
+    def on_mount(self) -> None:
+        try:
+            self.query_one("#api-key-input", Input).focus()
+        except Exception:
+            pass
+
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "base-url-select":
             custom_input = self.query_one("#base-url-custom", Input)
