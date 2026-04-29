@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<title>CLI Assistant</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+  <!-- ─── Sidebar ──────────────────────────────────────────────────────── -->
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-head">
+      <div class="brand">
+        <span class="brand-mark">✸</span>
+        <span class="brand-text" data-i18n="app.brand">CLI Assistant</span>
+      </div>
+      <button id="toggle-sidebar" class="icon-btn" data-i18n-tooltip="sidebar.toggle" title="Свернуть боковую панель">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+      </button>
+    </div>
+
+    <button id="new-chat" class="primary-btn">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      <span data-i18n="sidebar.new_chat">Новый чат</span>
+    </button>
+
+    <div class="sidebar-search">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="search-input" type="text" data-i18n-placeholder="sidebar.search" placeholder="Поиск по чатам" />
+    </div>
+
+    <div class="sidebar-section-title" data-i18n="sidebar.chats">Чаты</div>
+    <div id="chats-list" class="chats-list"></div>
+
+    <div class="sidebar-foot">
+      <button id="open-settings" class="settings-row" data-i18n-tooltip="settings.tooltip">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span data-i18n="settings.title">Настройки</span>
+      </button>
+      <div class="user-row">
+        <div class="avatar">👤</div>
+        <div class="user-info">
+          <div class="user-name" data-i18n="app.brand">CLI Assistant</div>
+          <div class="user-sub" data-i18n="app.subtitle">Локальный режим</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─── Main ─────────────────────────────────────────────────────────── -->
+  <main id="main" class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button id="show-sidebar" class="icon-btn hide" data-i18n-tooltip="sidebar.show" title="Показать боковую панель">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+        </button>
+        <h1 id="chat-title" class="chat-title" data-i18n="topbar.new_chat">Новый чат</h1>
+      </div>
+      <div class="topbar-right">
+        <span id="provider-badge" class="badge">…</span>
+      </div>
+    </header>
+
+    <section id="messages" class="messages">
+      <div id="welcome" class="welcome">
+        <div class="welcome-mark">✸</div>
+        <h2 data-i18n="welcome.title">Чем я могу помочь?</h2>
+        <p class="welcome-sub" data-i18n="welcome.sub">Управляйте системой через диалог. Я объясню, что делаю, перед каждым шагом.</p>
+        <div class="welcome-suggest">
+          <button class="suggest-btn" data-i18n="welcome.s1" data-q-key="welcome.q1" data-q="покажи что занимает больше всего места">📦 Что занимает место на диске?</button>
+          <button class="suggest-btn" data-i18n="welcome.s2" data-q-key="welcome.q2" data-q="покажи топ процессов по памяти">🧠 Топ процессов по памяти</button>
+          <button class="suggest-btn" data-i18n="welcome.s3" data-q-key="welcome.q3" data-q="найди .log файлы старше 7 дней в /var/log">🗂 Найти старые .log файлы</button>
+          <button class="suggest-btn" data-i18n="welcome.s4" data-q-key="welcome.q4" data-q="покажи системную информацию">⚙️ Системная информация</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Composer ────────────────────────────────────────────────── -->
+    <footer class="composer-wrap">
+      <div class="composer">
+        <textarea id="input" rows="1" data-i18n-placeholder="composer.placeholder" placeholder="Напишите сообщение CLI Assistant…"></textarea>
+        <div class="composer-actions">
+          <button id="mode-btn" class="mode-btn safe" data-i18n-tooltip="mode.safe_tooltip" data-tooltip="Safe mode: подтверждение для опасных действий">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span class="mode-label" data-i18n="mode.safe">Safe</span>
+          </button>
+
+          <!-- Кнопка выбора модели рядом с Safe Mode -->
+          <button id="model-btn" class="model-btn" data-i18n-tooltip="model.tooltip" data-tooltip="Выбор модели">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v3a4 4 0 0 0 4 4h0v3a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-3h0a4 4 0 0 0 4-4v-3a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4z"/></svg>
+            <span class="model-name" id="model-name">…</span>
+            <svg class="caret" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+
+          <!-- Поповер выбора модели -->
+          <div id="model-popover" class="popover hide" role="menu">
+            <div class="popover-head">
+              <span data-i18n="model.tooltip">Выбор модели</span>
+            </div>
+            <div id="model-list" class="popover-list"></div>
+            <div class="popover-foot">
+              <button class="ghost-btn small" id="model-open-settings" data-i18n="settings.title">Настройки</button>
+            </div>
+          </div>
+
+          <button id="send-btn" class="send-btn" data-i18n-tooltip="composer.send" data-tooltip="Отправить (Enter)">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="composer-hint" data-i18n="composer.hint">CLI Assistant может ошибаться — проверяйте важные операции.</div>
+    </footer>
+  </main>
+</div>
+
+<!-- ─── Confirm Dialog ────────────────────────────────────────────────── -->
+<div id="confirm-overlay" class="overlay hide">
+  <div class="dialog">
+    <div class="dialog-head">
+      <span class="dialog-icon warn">⚠</span>
+      <h3 data-i18n="confirm.title">Подтверждение действия</h3>
+    </div>
+    <div class="dialog-body">
+      <div class="dialog-action" id="confirm-action"></div>
+      <code class="dialog-target" id="confirm-target"></code>
+    </div>
+    <div class="dialog-actions">
+      <button id="confirm-no" class="ghost-btn" data-i18n="confirm.no">Нет</button>
+      <button id="confirm-yes" class="danger-btn" data-i18n="confirm.yes">Да, выполнить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Sudo Dialog ───────────────────────────────────────────────────── -->
+<div id="sudo-overlay" class="overlay hide">
+  <div class="dialog">
+    <div class="dialog-head">
+      <span class="dialog-icon">🔐</span>
+      <h3 data-i18n="sudo.title">Требуется пароль sudo</h3>
+    </div>
+    <div class="dialog-body">
+      <input id="sudo-input" type="password" data-i18n-placeholder="sudo.placeholder" placeholder="Пароль sudo" />
+      <div class="dialog-hint" data-i18n="sudo.hint">Пароль хранится только в памяти процесса до перезапуска.</div>
+    </div>
+    <div class="dialog-actions">
+      <button id="sudo-cancel" class="ghost-btn" data-i18n="sudo.cancel">Отмена</button>
+      <button id="sudo-ok" class="primary-btn" data-i18n="sudo.ok">Подтвердить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Settings Dialog ───────────────────────────────────────────────── -->
+<div id="settings-overlay" class="overlay hide">
+  <div class="dialog dialog-lg">
+    <div class="dialog-head">
+      <span class="dialog-icon">⚙</span>
+      <h3 data-i18n="settings.title">Настройки</h3>
+      <button class="icon-btn dialog-close" id="settings-close" aria-label="Закрыть">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="settings-tabs" role="tablist">
+      <button class="tab active" data-tab="ai"          data-i18n="settings.tab.ai">ИИ-провайдер</button>
+      <button class="tab"        data-tab="appearance"  data-i18n="settings.tab.appearance">Внешний вид</button>
+      <button class="tab"        data-tab="profiles"    data-i18n="settings.tab.profiles">Профили</button>
+      <button class="tab"        data-tab="about"       data-i18n="settings.tab.about">О программе</button>
+    </div>
+
+    <div class="settings-body">
+
+      <!-- TAB: AI -->
+      <section class="tab-panel active" data-panel="ai">
+        <label class="field">
+          <span class="field-label" data-i18n="settings.provider">Провайдер</span>
+          <select id="set-provider" class="select">
+            <option value="anthropic">Anthropic (Claude)</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="openai_compatible">OpenAI compatible</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span class="field-label" data-i18n="settings.model">Модель</span>
+          <select id="set-model-select" class="select"></select>
+          <input id="set-model-input" class="input mt-6" type="text" data-i18n-placeholder="settings.model_custom" placeholder="или введите свою" />
+        </label>
+
+        <label class="field">
+          <span class="field-label" data-i18n="settings.api_key">API-ключ</span>
+          <div class="input-wrap">
+            <input id="set-api-key" class="input" type="password" data-i18n-placeholder="settings.api_key_placeholder" placeholder="Ваш API-ключ (sk-…)" />
+            <button class="icon-btn input-eye" id="toggle-key" type="button" aria-label="Показать ключ">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <span class="field-hint" data-i18n="settings.api_key_hint">Ключ хранится в системном keyring или base64. Не отправляется наружу.</span>
+        </label>
+
+        <label class="field">
+          <span class="field-label" data-i18n="settings.base_url">Base URL</span>
+          <input id="set-base-url" class="input" type="text" data-i18n-placeholder="settings.base_url_placeholder" placeholder="https://api.openai.com/v1" />
+          <span class="field-hint" data-i18n="settings.base_url_hint">Опционально. Для совместимых OpenAI API (Groq, Ollama, OpenRouter…).</span>
+        </label>
+
+        <div class="field-row">
+          <button id="settings-test" class="ghost-btn" data-i18n="settings.test">Проверить подключение</button>
+          <span id="settings-test-status" class="test-status"></span>
+        </div>
+      </section>
+
+      <!-- TAB: APPEARANCE -->
+      <section class="tab-panel" data-panel="appearance">
+        <label class="field">
+          <span class="field-label" data-i18n="settings.theme">Тема</span>
+          <div id="theme-grid" class="theme-grid"></div>
+        </label>
+
+        <label class="field">
+          <span class="field-label" data-i18n="settings.language">Язык</span>
+          <select id="set-language" class="select">
+            <option value="ru">🇷🇺 Русский</option>
+            <option value="en">🇬🇧 English</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span class="field-label" data-i18n="settings.animations">Скорость анимаций</span>
+          <select id="set-anim" class="select">
+            <option value="off"    data-i18n="settings.anim.off">Выключить</option>
+            <option value="slow"   data-i18n="settings.anim.slow">Медленно</option>
+            <option value="normal" data-i18n="settings.anim.normal">Обычно</option>
+            <option value="fast"   data-i18n="settings.anim.fast">Быстро</option>
+          </select>
+        </label>
+
+        <label class="field-check">
+          <input type="checkbox" id="set-show-tools" />
+          <span data-i18n="settings.show_tools">Показывать вызовы инструментов</span>
+        </label>
+        <label class="field-check">
+          <input type="checkbox" id="set-show-ts" />
+          <span data-i18n="settings.timestamps">Показывать временные метки</span>
+        </label>
+      </section>
+
+      <!-- TAB: PROFILES -->
+      <section class="tab-panel" data-panel="profiles">
+        <p class="field-hint" data-i18n="settings.profiles_hint">Сохраняйте несколько комбинаций провайдер+модель+ключ и быстро переключайтесь.</p>
+        <div id="profiles-list" class="profiles-list"></div>
+        <div class="profile-add">
+          <input id="prof-name"     class="input" type="text" data-i18n-placeholder="settings.profile_name" placeholder="Имя профиля" />
+          <button id="prof-add-btn" class="primary-btn" data-i18n="settings.profile_add">Добавить профиль</button>
+        </div>
+      </section>
+
+      <!-- TAB: ABOUT -->
+      <section class="tab-panel" data-panel="about">
+        <div class="about-block">
+          <div class="about-mark">✸</div>
+          <h3 data-i18n="app.brand">CLI Assistant</h3>
+          <p data-i18n="settings.about_text">CLI Assistant — ИИ-ассистент для управления системой через естественный язык.</p>
+          <div class="about-meta">
+            <span><strong data-i18n="settings.version">Версия</strong>: 1.0.0</span>
+            <a href="https://github.com/sterchiks/CLI-Assistant" target="_blank" data-i18n="settings.repo">Репозиторий</a>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <div class="dialog-actions settings-foot">
+      <button id="settings-cancel" class="ghost-btn" data-i18n="settings.cancel">Отмена</button>
+      <button id="settings-save" class="primary-btn accent" data-i18n="settings.save">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Toast ─────────────────────────────────────────────────────────── -->
+<div id="toast" class="toast hide"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

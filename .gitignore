@@ -1,0 +1,14 @@
+# builds
+dist/
+build/
+*.AppImage
+packaging/
+cli-assistant-gui
+
+# python
+venv/
+__pycache__/
+*.pyc
+
+# logs
+*.log

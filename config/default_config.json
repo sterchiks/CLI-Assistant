@@ -1,0 +1,38 @@
+{
+  "ai": {
+    "provider": "anthropic",
+    "model": "claude-opus-4-5",
+    "api_key": "",
+    "base_url": "",
+    "temperature": 0.7,
+    "max_tokens": 4096,
+    "stream": true,
+    "system_prompt": ""
+  },
+  "ui": {
+    "theme": "dark",
+    "language": "ru",
+    "show_timestamps": true,
+    "bubble_style": "rounded",
+    "show_tool_calls": true,
+    "animation_speed": "normal"
+  },
+  "safety": {
+    "confirm_destructive": true,
+    "confirm_sudo": true,
+    "yolo_mode": false,
+    "blocked_paths": [
+      "/etc/passwd",
+      "/etc/shadow",
+      "/etc/sudoers"
+    ],
+    "max_file_size_mb": 50,
+    "allowed_sudo_commands": []
+  },
+  "session": {
+    "save_history": true,
+    "history_file": "~/.cli-assistant/history.json",
+    "max_history": 1000,
+    "sudo_cache_minutes": 15
+  }
+}

@@ -1,0 +1,163 @@
+{
+  "claude_dark": {
+    "name": "Claude Dark",
+    "icon": "🌙",
+    "vars": {
+      "--bg":           "#1f1e1d",
+      "--bg-soft":      "#262625",
+      "--sidebar":      "#1a1918",
+      "--panel":        "#2a2928",
+      "--panel-2":      "#34322f",
+      "--border":       "#3a3835",
+      "--border-soft":  "#2e2d2b",
+      "--text":         "#ebe9e3",
+      "--text-mute":    "#b6b2a8",
+      "--text-dim":     "#8a877f",
+      "--accent":       "#c96442",
+      "--accent-2":     "#e07a5b",
+      "--accent-soft":  "rgba(201,100,66,0.16)",
+      "--user-bg":      "#34322f",
+      "--danger":       "#d96652",
+      "--danger-bg":    "rgba(217,102,82,0.14)",
+      "--warn":         "#e0a04a"
+    }
+  },
+  "claude_light": {
+    "name": "Claude Light",
+    "icon": "☀️",
+    "vars": {
+      "--bg":           "#faf9f5",
+      "--bg-soft":      "#f0ede4",
+      "--sidebar":      "#f5f2ea",
+      "--panel":        "#ffffff",
+      "--panel-2":      "#f8f5ec",
+      "--border":       "#d9d4c5",
+      "--border-soft":  "#e6e2d6",
+      "--text":         "#2b2a26",
+      "--text-mute":    "#6b6a64",
+      "--text-dim":     "#9a988e",
+      "--accent":       "#c15f3c",
+      "--accent-2":     "#dc7150",
+      "--accent-soft":  "rgba(193,95,60,0.14)",
+      "--user-bg":      "#ece8da",
+      "--danger":       "#c54a3a",
+      "--danger-bg":    "rgba(197,74,58,0.10)",
+      "--warn":         "#c98722"
+    }
+  },
+  "midnight": {
+    "name": "Midnight Blue",
+    "icon": "🌌",
+    "vars": {
+      "--bg":           "#0f1626",
+      "--bg-soft":      "#15203a",
+      "--sidebar":      "#0a111d",
+      "--panel":        "#1a2840",
+      "--panel-2":      "#22324f",
+      "--border":       "#2c3f5e",
+      "--border-soft":  "#1e2c45",
+      "--text":         "#e5eaf5",
+      "--text-mute":    "#9fb0cc",
+      "--text-dim":     "#6c7e9d",
+      "--accent":       "#5b9dff",
+      "--accent-2":     "#7eb6ff",
+      "--accent-soft":  "rgba(91,157,255,0.14)",
+      "--user-bg":      "#22324f",
+      "--danger":       "#ff6b6b",
+      "--danger-bg":    "rgba(255,107,107,0.12)",
+      "--warn":         "#ffb84d"
+    }
+  },
+  "forest": {
+    "name": "Forest",
+    "icon": "🌲",
+    "vars": {
+      "--bg":           "#16201a",
+      "--bg-soft":      "#1d2922",
+      "--sidebar":      "#121a15",
+      "--panel":        "#21302a",
+      "--panel-2":      "#2a3d34",
+      "--border":       "#34483d",
+      "--border-soft":  "#243029",
+      "--text":         "#e7ece4",
+      "--text-mute":    "#a9b8a8",
+      "--text-dim":     "#7a8a7a",
+      "--accent":       "#7fb86b",
+      "--accent-2":     "#a0d488",
+      "--accent-soft":  "rgba(127,184,107,0.16)",
+      "--user-bg":      "#2a3d34",
+      "--danger":       "#d96652",
+      "--danger-bg":    "rgba(217,102,82,0.14)",
+      "--warn":         "#e0a04a"
+    }
+  },
+  "rose_pine": {
+    "name": "Rose Pine",
+    "icon": "🌹",
+    "vars": {
+      "--bg":           "#191724",
+      "--bg-soft":      "#1f1d2e",
+      "--sidebar":      "#16141f",
+      "--panel":        "#26233a",
+      "--panel-2":      "#302d44",
+      "--border":       "#3e3a55",
+      "--border-soft":  "#2a2740",
+      "--text":         "#e0def4",
+      "--text-mute":    "#908caa",
+      "--text-dim":     "#6e6a86",
+      "--accent":       "#eb6f92",
+      "--accent-2":     "#f0879c",
+      "--accent-soft":  "rgba(235,111,146,0.16)",
+      "--user-bg":      "#302d44",
+      "--danger":       "#eb6f92",
+      "--danger-bg":    "rgba(235,111,146,0.14)",
+      "--warn":         "#f6c177"
+    }
+  },
+  "solarized_light": {
+    "name": "Solarized Light",
+    "icon": "🌅",
+    "vars": {
+      "--bg":           "#fdf6e3",
+      "--bg-soft":      "#eee8d5",
+      "--sidebar":      "#f5efdc",
+      "--panel":        "#ffffff",
+      "--panel-2":      "#eee8d5",
+      "--border":       "#d3cbb1",
+      "--border-soft":  "#e4ddc4",
+      "--text":         "#073642",
+      "--text-mute":    "#586e75",
+      "--text-dim":     "#93a1a1",
+      "--accent":       "#cb4b16",
+      "--accent-2":     "#dc6536",
+      "--accent-soft":  "rgba(203,75,22,0.13)",
+      "--user-bg":      "#eee8d5",
+      "--danger":       "#dc322f",
+      "--danger-bg":    "rgba(220,50,47,0.10)",
+      "--warn":         "#b58900"
+    }
+  },
+  "monokai": {
+    "name": "Monokai",
+    "icon": "💜",
+    "vars": {
+      "--bg":           "#272822",
+      "--bg-soft":      "#2d2e27",
+      "--sidebar":      "#1f201b",
+      "--panel":        "#34352e",
+      "--panel-2":      "#3e3f37",
+      "--border":       "#49493f",
+      "--border-soft":  "#34352e",
+      "--text":         "#f8f8f2",
+      "--text-mute":    "#a6a89a",
+      "--text-dim":     "#75715e",
+      "--accent":       "#a6e22e",
+      "--accent-2":     "#bdf04e",
+      "--accent-soft":  "rgba(166,226,46,0.16)",
+      "--user-bg":      "#3e3f37",
+      "--danger":       "#f92672",
+      "--danger-bg":    "rgba(249,38,114,0.14)",
+      "--warn":         "#fd971f"
+    }
+  }
+}

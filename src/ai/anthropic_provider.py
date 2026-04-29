@@ -1,0 +1,187 @@
+"""Провайдер Anthropic Claude."""
+
+import logging
+from typing import AsyncGenerator, Optional
+
+from .provider import BaseProvider
+
+logger = logging.getLogger(__name__)
+
+ANTHROPIC_MODELS = [
+    "claude-opus-4-5",
+    "claude-sonnet-4-5",
+    "claude-haiku-4-5",
+    "claude-opus-4-0",
+    "claude-sonnet-4-0",
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-20241022",
+    "claude-3-opus-20240229",
+    # Модели, доступные через прокси-сервисы
+    "claude-sonnet-4-6",
+    "claude-opus-4-6",
+    "claude-opus-4-7",
+    "claude-opus-latest",
+]
+
+from .system_prompt import DEFAULT_SYSTEM_PROMPT
+
+
+class AnthropicProvider(BaseProvider):
+    """Провайдер для Anthropic Claude API."""
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "claude-opus-4-5",
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        system_prompt: str = "",
+        base_url: str = "",
+    ) -> None:
+        self._api_key = api_key
+        self._model = model
+        self._temperature = temperature
+        self._max_tokens = max_tokens
+        self._system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
+        self._base_url = base_url
+        self._client = None
+
+    def _get_client(self):
+        """Лениво создаёт клиент Anthropic.
+
+        Если ключ имеет префикс прокси-сервиса (sk-fp-, sk-or-, sk-proj-proxy- и т.п.)
+        или задан кастомный base_url — добавляем заголовок Authorization: Bearer,
+        так как многие прокси (включая fapi/OpenRouter-style) требуют именно его
+        вместо стандартного x-api-key от Anthropic.
+        """
+        if self._client is None:
+            import anthropic
+            kwargs = {"api_key": self._api_key}
+            if self._base_url:
+                kwargs["base_url"] = self._base_url
+                # Для любого кастомного base_url дублируем авторизацию через Bearer,
+                # оставляя и x-api-key — какой заголовок примет сервер, тот и сработает.
+                kwargs["default_headers"] = {
+                    "Authorization": f"Bearer {self._api_key}",
+                }
+            self._client = anthropic.AsyncAnthropic(**kwargs)
+        return self._client
+
+    def get_provider_name(self) -> str:
+        return "anthropic"
+
+    def get_available_models(self) -> list[str]:
+        return ANTHROPIC_MODELS
+
+    async def test_connection(self) -> bool:
+        """Проверяет подключение к Anthropic API."""
+        try:
+            client = self._get_client()
+            response = await client.messages.create(
+                model=self._model,
+                max_tokens=10,
+                messages=[{"role": "user", "content": "Hi"}],
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Anthropic connection test failed: {e}")
+            return False
+
+    async def chat(
+        self,
+        messages: list[dict],
+        tools: Optional[list[dict]] = None,
+        stream: bool = True,
+    ) -> AsyncGenerator[dict, None]:
+        """
+        Отправляет сообщения в Claude API.
+        Поддерживает стриминг и tool use.
+        """
+        try:
+            client = self._get_client()
+
+            kwargs = {
+                "model": self._model,
+                "max_tokens": self._max_tokens,
+                "system": self._system_prompt,
+                "messages": messages,
+            }
+
+            if tools:
+                kwargs["tools"] = tools
+
+            if stream:
+                async for chunk in self._stream_response(client, kwargs):
+                    yield chunk
+            else:
+                async for chunk in self._non_stream_response(client, kwargs):
+                    yield chunk
+
+        except Exception as e:
+            logger.error(f"Anthropic chat error: {e}")
+            yield {"type": "error", "error": str(e)}
+
+    async def _stream_response(self, client, kwargs: dict) -> AsyncGenerator[dict, None]:
+        """Стриминг ответа от Claude."""
+        try:
+            import anthropic
+
+            async with client.messages.stream(**kwargs) as stream:
+                async for event in stream:
+                    if hasattr(event, "type"):
+                        if event.type == "content_block_delta":
+                            if hasattr(event.delta, "text"):
+                                yield {"type": "text", "content": event.delta.text}
+                            elif hasattr(event.delta, "partial_json"):
+                                yield {"type": "tool_input_delta", "content": event.delta.partial_json}
+
+                        elif event.type == "content_block_start":
+                            if hasattr(event.content_block, "type"):
+                                if event.content_block.type == "tool_use":
+                                    yield {
+                                        "type": "tool_call_start",
+                                        "tool_name": event.content_block.name,
+                                        "tool_use_id": event.content_block.id,
+                                    }
+
+                        elif event.type == "message_delta":
+                            if hasattr(event.delta, "stop_reason"):
+                                if event.delta.stop_reason == "tool_use":
+                                    # Получаем финальное сообщение для tool calls
+                                    final_msg = await stream.get_final_message()
+                                    for block in final_msg.content:
+                                        if block.type == "tool_use":
+                                            yield {
+                                                "type": "tool_call",
+                                                "tool_name": block.name,
+                                                "tool_input": block.input,
+                                                "tool_use_id": block.id,
+                                            }
+
+            yield {"type": "done"}
+
+        except Exception as e:
+            logger.error(f"Anthropic stream error: {e}")
+            yield {"type": "error", "error": str(e)}
+
+    async def _non_stream_response(self, client, kwargs: dict) -> AsyncGenerator[dict, None]:
+        """Не-стриминговый ответ от Claude."""
+        try:
+            response = await client.messages.create(**kwargs)
+
+            for block in response.content:
+                if block.type == "text":
+                    yield {"type": "text", "content": block.text}
+                elif block.type == "tool_use":
+                    yield {
+                        "type": "tool_call",
+                        "tool_name": block.name,
+                        "tool_input": block.input,
+                        "tool_use_id": block.id,
+                    }
+
+            yield {"type": "done"}
+
+        except Exception as e:
+            logger.error(f"Anthropic non-stream error: {e}")
+            yield {"type": "error", "error": str(e)}
