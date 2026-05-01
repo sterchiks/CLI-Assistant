@@ -1,88 +1,87 @@
 <div align="center">
 
-# 🤖 CLI Assistant
+<img src="https://raw.githubusercontent.com/sterchiks/CLI-Assistant/main/src/gui_web/icons/icon.png" width="120" alt="CLI Assistant Logo" />
 
-### Your personal AI assistant right in the terminal
+# CLI Assistant
 
-*Manage Linux / macOS / Windows in plain language. Safe. Transparent. No pain.*
+**An AI-powered assistant for Linux — in your terminal and as a full GUI app**
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![Textual](https://img.shields.io/badge/Built_with-Textual-5A45FF?style=for-the-badge)](https://github.com/Textualize/textual)
+*Perfect for beginners learning Linux and pros who want to move faster*
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge)](LICENSE)
-[![Platform](https://img.shields.io/badge/Linux_•_macOS_•_Windows-supported-orange?style=for-the-badge)]()
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20Only-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/sterchiks/CLI-Assistant)
+[![Debian](https://img.shields.io/badge/Debian%2FUbuntu-Ready-A81D33?style=for-the-badge&logo=debian&logoColor=white)](https://github.com/sterchiks/CLI-Assistant/releases)
 
-[Installation](#-installation) •
-[Features](#-features) •
-[Screenshots](#-screenshots) •
-[Commands](#-slash-commands) •
-[Architecture](#-architecture) •
-[FAQ](#-faq)
+<br/>
 
----
+> **New to Linux?** Just tell CLI Assistant what you want in plain language.  
+> **A pro?** Stop memorizing flags — describe the task and move on.
 
-> "Delete all .log files in /var/log older than 7 days"  
-> "Show me what's taking up the most disk space"  
-> "Start docker-compose in this folder and tail the nginx logs"
+<br/>
 
-All of this — in plain English, right in your terminal.
+[🚀 Quick Install](#-installation) · [📖 How It Works](#-how-it-works) · [🤖 AI Providers](#-supported-ai-providers) · [📸 Screenshots](#-screenshots) · [⌨️ Commands](#%EF%B8%8F-commands)
 
 </div>
 
 ---
 
-## ✨ What is this?
+## 🤔 Why CLI Assistant?
 
-**CLI Assistant** is a TUI interface (text-based, like `htop` or `lazygit`) where you talk to a modern LLM (Claude / Gemini / any OpenAI-compatible) in natural language. The assistant **automatically** calls the right tools — reads files, runs commands, installs packages, manages services — and **shows every step** before executing it.
+Linux is powerful — but the learning curve is steep. Remembering the exact flags for `find`, `awk`, `rsync`, `journalctl`, or `systemctl` takes years. CLI Assistant bridges the gap:
 
-Perfect for:
+| Without CLI Assistant | With CLI Assistant |
+|---|---|
+| `find /var/log -name "*.log" -mtime +7 -exec rm {} \;` | *"Delete log files older than 7 days"* |
+| `du -sh /* 2>/dev/null \| sort -rh \| head -10` | *"What's taking up the most disk space?"* |
+| `systemctl list-units --failed` | *"Show me what services are broken"* |
+| `ss -tulpn \| grep LISTEN` | *"What ports are open on my system?"* |
 
-- 🆕 Beginners who are scared of `bash`
-- ⚡ Power users who can't remember every `find`, `awk`, `journalctl` flag
-- 🛠 DevOps — for routine tasks: restarting services, cleaning logs, checking ports
-- 🧪 Testers and students learning Linux
+The AI explains **every action before doing it**, so you learn while you work — no blind commands.
 
 ---
 
-## 🌟 Features
+## ✨ Features
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-### 🧠 Multiple AI Providers
-- **Anthropic** Claude (Opus / Sonnet / Haiku)
-- **Google** Gemini 2.x / 1.5
-- **OpenAI-compatible**:
-  - OpenAI, Groq, Together AI
-  - **Ollama / LM Studio** (local, free)
-  - OpenRouter, Mistral
+### 🖥️ Two Interfaces
+- **GUI App** — full graphical window, works like a modern chat
+- **CLI/TUI** — runs entirely in the terminal (Textual-based)
+- Both support the same AI providers and tools
 
-### 🎨 5 Built-in Themes
-`dark` • `light` • `cyberpunk` • `nord` • `solarized`
+### 🧠 Smart AI Integration
+- Supports **Claude, Gemini, OpenAI, OpenRouter, Ollama** and any OpenAI-compatible API
+- Switch providers and models on the fly
+- Local AI support via Ollama — **no internet required, totally free**
 
-### 🌍 Localization
-Russian 🇷🇺 and English 🇬🇧 out of the box
-
-### 🔒 Secure Key Storage
-Via system keyring (KWallet, GNOME Keyring, macOS Keychain, Windows Credential Locker)
+### 🛡️ Safety First
+- Confirms before **any destructive action** (delete, overwrite, sudo)
+- Protected system paths (`/etc/passwd`, `/boot`, etc.)
+- Sudo password cached in memory only — never written to disk
 
 </td>
 <td width="50%" valign="top">
 
-### 🛠 60+ Tools in 14 Categories
-- 📂 **Files** — read / write / search / edit
-- 🗂 **Filesystem** — copy, permissions, ownership
-- 💻 **Terminal** — run commands, open new windows
-- 💾 **Disks** — partitions, mounting, lsblk
-- 🔐 **Sudo** — password cached in memory for 15 min
-- 🌐 **Network** — ping, ports, HTTP, file download
-- 📦 **Packages** — apt / dnf / pacman / brew / winget / pip / npm
-- ⚙️ **Processes** — psutil-powered htop alternative
-- 📦 **Archives** — zip / tar / tar.gz / bz2 / xz
-- 🌿 **Git** — status / commit / push / clone / branch
-- 🔧 **systemd** — services, journals, autostart
-- 🪟 **GUI Apps** — open, close, move between workspaces
-- ⏰ **Cron** — human-readable format (`every day at 9:30`)
+### 🛠️ Powerful Tools
+- 📂 **Files** — read, write, search, edit, copy, move, delete
+- 💾 **Disk** — partitions, usage, mount/unmount
+- 📦 **Packages** — apt, pip, npm, snap, flatpak
+- ⚙️ **Services** — systemd start/stop/restart/logs
+- 🌐 **Network** — ping, ports, download, speed
+- 🔐 **Sudo** — safe privilege escalation
+- 📊 **Processes** — kill, find, monitor
+- 📦 **Archives** — zip, tar.gz, extract
+- 🌿 **Git** — commit, push, pull, clone
+- 🪟 **Apps** — open/close GUI apps, workspaces
+- ⏰ **Cron** — schedule tasks in plain English
+
+### 🎨 Looks Good Too
+- Dark / Light / Cyberpunk / Nord and more themes
+- Russian 🇷🇺 and English 🇬🇧 interface
+- Responsive layout
 
 </td>
 </tr>
@@ -92,335 +91,295 @@ Via system keyring (KWallet, GNOME Keyring, macOS Keychain, Windows Credential L
 
 ## 📸 Screenshots
 
-<img src="images/chat.png" width="700">
+### GUI Version
+> *Full graphical window — launch from your app menu or run `cli-assistant-gui`*
 
-### Setup Wizard
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  CLI Assistant                              OpenAI · llama-3.3-70b  │
+├──────────────────┬──────────────────────────────────────────────────┤
+│                  │                                                   │
+│  + New Chat      │          What can I help you with?               │
+│                  │    Manage your system through dialogue.           │
+│  ──────────────  │    I explain what I'm doing at every step.       │
+│  CHATS           │                                                   │
+│  > What takes... │   ┌──────────────────┐  ┌──────────────────┐    │
+│                  │   │ 🖥 Disk usage     │  │ 🧠 Top processes │    │
+│                  │   └──────────────────┘  └──────────────────┘    │
+│                  │   ┌──────────────────┐  ┌──────────────────┐    │
+│                  │   │ 📋 Find .log files│  │ ⚙️ System info   │    │
+│                  │   └──────────────────┘  └──────────────────┘    │
+│                  │                                                   │
+│                  │  ┌─────────────────────────────────────────────┐ │
+│  ⚙ Settings      │  │ Write a message...                          │ │
+│  CLI Assistant   │  │  🛡 Safe  ·  llama-3.3-70b ▾          [➤] │ │
+│  Local mode      │  └─────────────────────────────────────────────┘ │
+└──────────────────┴──────────────────────────────────────────────────┘
+```
 
-<img src="images/install.png" width="700">
+### CLI / TUI Version
+> *Runs directly in the terminal — launch with `cli-assistant`*
 
-### Themes
-
-<table>
-<tr>
-<th>Dark</th><th>Cyberpunk</th><th>Nord</th><th>Solarized</th>
-</tr>
-<tr>
-<td>🌑</td>
-<td>🌆</td>
-<td>❄️</td>
-<td>☀️</td>
-</tr>
-</table>
-
-</div>
+```
+┌─────────────────────────────────────────────────────┬─────────────────────┐
+│ 🤖 CLI Assistant │ gemini: gemini-2.0-flash │ ~/     │ SYSTEM              │
+├─────────────────────────────────────────────────────│ CPU:  ████░░  42%   │
+│                                                     │ RAM:  7.3/15.5 GB   │
+│                   ╭──────────────────────────╮      │       ████████░░    │
+│                   │ what takes the most space│      │                     │
+│                   │ on my disk?              │      │ DISK                │
+│                   │                  👤 You  │      │ /  168/242 GB       │
+│                   ╰──────────────────────────╯      │    ██████████░░     │
+│                                                     │                     │
+│ 🤖 Assistant                                        │ NETWORK             │
+│ ╭──────────────────────────────────────────╮        │ ↓ 2.3 MB/s          │
+│ │ Analyzing disk usage in /home...         │        │ ↑ 0.4 MB/s          │
+│ │ [🔧 get_disk_usage: /home]               │        │                     │
+│ │                                          │        │ TOP PROCESSES       │
+│ │ Top 5 by size:                           │        │ code      2.1 GB    │
+│ │ • ~/Videos    — 42.3 GB                  │        │ firefox   1.4 GB    │
+│ │ • ~/Downloads — 18.7 GB                  │        │ chrome    0.8 GB    │
+│ │ • ~/.local    —  4.2 GB                  │        │                     │
+│ │ Want to clean something up?              │        │ PATH                │
+│ ╰──────────────────────────────────────────╯        │ /home/user          │
+│                                                     │                     │
+├─────────────────────────────────────────────────────┴─────────────────────┤
+│ > Write a message or /command...                                   [Enter] │
+│ ^s Settings   ^l Clear   ^h Help   esc Cancel                             │
+└───────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## 🚀 Installation
 
-### Debian / Ubuntu / Linux Mint
+### Option 1 — Download .deb (Recommended)
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourname/cli-assistant.git
-   ```
-2. Run the installer:
-   ```bash
-   ./install.sh
-   ```
-3. Launch the application:
-   ```bash
-   cli-assistant
-   ```
-
-### Manual Installation (for developers)
+The easiest way. The package installs everything automatically.
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate         # Linux/macOS
-# venv\Scripts\activate          # Windows
+# Download the latest release
+wget https://github.com/sterchiks/CLI-Assistant/releases/latest/download/cli-assistant_1.0.0_amd64.deb
 
-pip install -r requirements.txt
-python -m src.main
+# Install
+sudo dpkg -i cli-assistant_1.0.0_amd64.deb
+
+# Install system dependencies if needed
+sudo apt-get install -f -y
 ```
 
-### install.sh Flags
-
-| Flag | Action |
-|------|--------|
-| `--update` | Update an existing installation |
-| `--reset-config` | Reset config at `~/.cli-assistant/config.json` |
-| `--uninstall` | Full removal |
-| `--check` | Check dependencies only, install nothing |
-| `--deps-only` | Install/update dependencies only |
+After installation:
+- **GUI version** → find "CLI Assistant" in your app menu, or run `cli-assistant-gui`
+- **TUI version** → open a terminal and run `cli-assistant`
 
 ---
 
-## ⚙️ First Launch
+### Option 2 — Install from Source (CLI/TUI version)
 
-On first launch, the **Setup Wizard** walks you through the setup:
+```bash
+# Clone the repo
+git clone https://github.com/sterchiks/CLI-Assistant.git
+cd CLI-Assistant
 
-```
-┌─────────────────────────────────────────────────┐
-│  🤖 Welcome to CLI Assistant!                   │
-│                                                 │
-│  1. Choose language                             │
-│  2. Choose AI provider                          │
-│  3. Enter API key (with connection test)        │
-│  4. Select model                                │
-│  5. Security settings                           │
-│  6. Choose theme                                │
-│  7. Test request                                │
-│                                                 │
-│           [ Start Setup ]                       │
-└─────────────────────────────────────────────────┘
+# Run the installer
+chmod +x install.sh
+./install.sh
 ```
 
-Config is saved to `~/.cli-assistant/config.json`, keys go into the system keyring.
+The installer will:
+1. Check for Python 3.10+
+2. Create a virtual environment
+3. Install all dependencies
+4. Add `cli-assistant` to your PATH
+5. Optionally add the `ai` alias to your `.bashrc`
+
+After installation, open a new terminal and run:
+
+```bash
+cli-assistant
+# or the short alias:
+ai
+```
+
+---
+
+### First Launch — Setup Wizard
+
+On first launch, a setup wizard will guide you through:
+
+1. **Choose language** — English or Russian
+2. **Choose AI provider** — Gemini, Claude, OpenAI, OpenRouter, Ollama, or custom
+3. **Enter API key** — with live connection test
+4. **Select model**
+5. **Security settings** — confirmation before destructive actions
+6. **Choose theme**
+
+Config is saved to `~/.cli-assistant/config.json`. API keys are stored securely in your system keyring.
 
 ---
 
 ## 🤖 Supported AI Providers
 
-| Provider | Models | Free tier |
-|----------|--------|-----------|
-| **Google Gemini** | gemini-2.0-flash, gemini-1.5-pro | ✅ Yes (AI Studio) |
-| **Anthropic Claude** | claude-opus-4-5, claude-sonnet-4-5, claude-haiku-4-5 | ❌ Paid |
-| **OpenAI** | gpt-4o, gpt-4o-mini | ❌ Paid |
-| **Ollama** (local) | llama3.2, mistral, qwen and more | ✅ Free |
-| **Groq** | llama-3.3-70b and more | ✅ Free |
-| **LM Studio** | any local model | ✅ Free |
-| **OpenRouter** | 200+ models | ✅ Partly free |
+| Provider | Free Tier | API Key Format | Notes |
+|----------|-----------|----------------|-------|
+| **Google Gemini** | ✅ Yes | `AIza...` | Get free key at [aistudio.google.com](https://aistudio.google.com) |
+| **Anthropic Claude** | ❌ Paid | `sk-ant-...` | [console.anthropic.com](https://console.anthropic.com) |
+| **OpenAI** | ❌ Paid | `sk-...` | [platform.openai.com](https://platform.openai.com) |
+| **OpenRouter** | ✅ Partly | `sk-or-...` | 200+ models, some free. [openrouter.ai](https://openrouter.ai) |
+| **Ollama** (local) | ✅ Free | `ollama` | Runs on your machine, no internet |
+| **LM Studio** (local) | ✅ Free | any | Runs on your machine |
+| **Custom** | — | — | Any OpenAI-compatible API with custom base URL |
 
-> 💡 **Recommended for starters: Google AI Studio** — free API key in 30 seconds at [aistudio.google.com](https://aistudio.google.com)
+### 🆓 Completely Free Setup (Ollama)
+
+```bash
+# Install Ollama
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Download a model (pick one)
+ollama pull llama3.2          # 2 GB — great quality
+ollama pull llama3.2:1b       # 1 GB — faster, lightweight
+ollama pull qwen2.5:7b        # 4 GB — excellent quality
+```
+
+Then in CLI Assistant settings:
+- Provider: `OpenAI Compatible`
+- Base URL: `http://localhost:11434/v1`
+- API Key: `ollama`
+- Model: `llama3.2`
 
 ---
 
-## 💬 Slash Commands
+## ⌨️ Commands
 
-Available directly in the chat (start with `/`):
+Type these in the chat input (start with `/`):
 
 | Command | Description |
 |---|---|
-| `/help` | List all commands |
-| `/settings` | Open full settings screen |
-| `/provider <name>` | Switch provider (`anthropic` / `gemini` / `openai_compatible`) |
+| `/help` | Show all available commands |
+| `/settings` | Open full settings panel |
+| `/provider <name>` | Switch AI provider |
 | `/model <name>` | Switch model |
-| `/theme <name>` | Switch UI theme |
-| `/apikey` | Securely update API key |
+| `/theme <name>` | Change UI theme (`dark`, `light`, `cyberpunk`, `nord`...) |
+| `/apikey` | Update API key securely |
 | `/baseurl <url>` | Change base URL (for Ollama, OpenRouter, etc.) |
 | `/cd <path>` | Change working directory |
-| `/ls` | List current directory contents |
-| `/sudo` | Request sudo password for the session |
-| `/sudo clear` | Clear sudo cache |
+| `/ls` | List current directory |
+| `/sudo` | Request sudo for the session |
 | `/clear` | Clear chat history |
-| `/history` | Show recent messages |
-| `/export <path>` | Export history to JSON / Markdown |
+| `/export <path>` | Export history to JSON or Markdown |
 
-### Keyboard Shortcuts
+### Keyboard Shortcuts (TUI version)
 
 | Key | Action |
 |---|---|
-| `Ctrl+C` | Quit |
-| `Ctrl+S` | Open settings |
-| `Ctrl+L` | Clear chat |
 | `Enter` | Send message |
-| `↑ / ↓` | Navigate input history |
+| `Ctrl+S` | Settings |
+| `Ctrl+L` | Clear chat |
+| `Ctrl+H` | Help |
+| `Ctrl+C` | Exit |
 
 ---
 
-## 🔒 Security
+## 🔒 Safety & Security
 
-CLI Assistant is designed to **minimize the risk of irreversible actions**:
+CLI Assistant is built with safety in mind:
 
-- ✅ **Confirmation before delete, overwrite, and sudo commands** (configurable)
-- ✅ **Protected paths** are never modified: `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, `/boot/*`, `/dev/*`
-- ✅ **API keys stored in system keyring**, never in plaintext
-- ✅ **Sudo password only in process memory**, auto-cleared after configurable timeout
-- ✅ **File read size limit** (50 MB by default)
-- ✅ **Sudo command whitelist** (optional)
-- ✅ **System prompt blocks** `rm -rf /`, fork bombs, and similar; the assistant will suggest a safe alternative
-- ✅ **All errors logged** to `~/.cli-assistant/logs/error.log`, not dumped as stack traces
+- **Confirmation prompts** before any delete, overwrite, or sudo operation
+- **Protected paths** — `/etc/passwd`, `/etc/shadow`, `/boot`, `/dev` are read-only by default
+- **API keys** stored in system keyring (GNOME Keyring / KWallet) — never in plaintext
+- **Sudo password** lives only in process memory, auto-cleared after 15 minutes
+- **Blocked commands** — `rm -rf /`, fork bombs, and similar are rejected
+- **File size limit** — won't read files over 50 MB by default
+
+You can customize all safety settings in `/settings`.
 
 ---
 
-## 🏗 Architecture
+## 🏗️ Project Structure
 
 ```
-cli-assistant/
-├── install.sh / install.bat / run.sh
-├── requirements.txt
-├── config/default_config.json
+CLI-Assistant/
+├── install.sh              # Installer for source installation
+├── run.sh                  # Quick launch after install
+├── requirements.txt        # Python dependencies (TUI)
+├── requirements-gui.txt    # Python dependencies (GUI)
+├── build_deb.sh            # .deb package builder
+├── config/
+│   └── default_config.json
 └── src/
-    ├── main.py                    # entry point, argument parser
-    ├── ai/                        # AI providers (unified interface)
-    │   ├── provider.py            # BaseProvider (ABC)
+    ├── main.py             # TUI entry point
+    ├── gui_app.py          # GUI entry point
+    ├── gui_web/            # HTML/CSS/JS for GUI
+    ├── ai/                 # AI provider implementations
     │   ├── anthropic_provider.py
     │   ├── gemini_provider.py
-    │   ├── openai_provider.py     # + any OpenAI-compatible API
+    │   ├── openai_provider.py
     │   └── provider_factory.py
-    ├── tools/                     # 14 tool sets
-    │   ├── file_reader.py
+    ├── tools/              # System tools (14 categories)
     │   ├── file_manager.py
-    │   ├── file_editor.py
-    │   ├── terminal_manager.py
-    │   ├── disk_manager.py
-    │   ├── sudo_manager.py
-    │   ├── network_tool.py
     │   ├── package_manager.py
     │   ├── process_manager.py
-    │   ├── archive_tool.py
     │   ├── git_tool.py
     │   ├── service_manager.py
-    │   ├── app_manager.py
-    │   └── cron_tool.py
+    │   └── ...
     ├── core/
-    │   ├── assistant.py           # main orchestrator
-    │   ├── tool_executor.py       # function calling + dispatch
-    │   └── safety.py              # checks and confirmations
-    ├── settings/
-    │   ├── config_manager.py      # pydantic + keyring
-    │   └── settings_ui.py
-    ├── ui/
-    │   ├── chat_ui.py             # Textual App
-    │   ├── setup_wizard.py
-    │   └── themes.py              # themes as Textual CSS
-    └── i18n/
-        ├── ru.json
-        └── en.json
+    │   ├── assistant.py
+    │   └── tool_executor.py
+    └── settings/
+        └── config_manager.py
 ```
-
-### Stack
-
-| Component | Technology |
-|---|---|
-| TUI Framework | [Textual](https://github.com/Textualize/textual) |
-| Formatting | [Rich](https://github.com/Textualize/rich) |
-| AI SDKs | `anthropic` • `google-generativeai` • `openai` |
-| Config | `pydantic` |
-| Key Storage | `keyring` |
-| System Info | `psutil` |
-| Async I/O | `asyncio` + `aiofiles` |
 
 ---
 
-## 🔌 Adding a New AI Provider
+## 📋 Requirements
 
-1. Create `src/ai/myprovider.py`, inherit from `BaseProvider`:
+| | Minimum | Recommended |
+|---|---|---|
+| **OS** | Debian 11 / Ubuntu 20.04 | Ubuntu 22.04+ / Debian 12 |
+| **Python** | 3.10 | 3.12 |
+| **RAM** | 512 MB | 1 GB+ |
+| **Architecture** | amd64 | amd64 |
 
-```python
-from .provider import BaseProvider
-
-class MyProvider(BaseProvider):
-    async def chat(self, messages, tools, stream): ...
-    async def test_connection(self) -> bool: ...
-    def get_available_models(self) -> list[str]: ...
-```
-
-2. Register it in `src/ai/provider_factory.py`:
-
-```python
-elif name == "my_provider":
-    return MyProvider(config)
-```
-
-3. Add the option in `src/ui/setup_wizard.py` and in the default config.
-
-Done — the assistant will immediately pick up the new provider in `/provider` and in the Setup Wizard.
-
----
-
-## 🧩 Adding a New Tool
-
-1. Create `src/tools/my_tool.py` with a class and methods.
-2. Add the import to `src/tools/__init__.py`.
-3. Add the description to `TOOL_DEFINITIONS` in `src/core/tool_executor.py`.
-4. Add `elif tool_name == "my_action": ...` to `_dispatch()`.
-
-The LLM will **immediately** see your tool via function calling — no extra configuration needed.
-
----
-
-## ❓ FAQ
-
-<details>
-<summary><b>Does it work offline?</b></summary>
-
-Yes, if you use **Ollama** or **LM Studio** as the provider. In the Setup Wizard, choose *OpenAI-compatible*, set Base URL to `http://localhost:11434/v1` (Ollama) or `http://localhost:1234/v1` (LM Studio).
-
-</details>
-
-<details>
-<summary><b>What about Windows?</b></summary>
-
-Supported. Most tools are cross-platform (`psutil`, file operations, network, git, archives, pip/npm/winget). Linux-specific limitations:
-- `service_manager` (systemd) — not available
-- `app_manager` uses PowerShell instead of `wmctrl`
-- `disk_manager.mount/unmount` works on Linux only
-
-</details>
-
-<details>
-<summary><b>How much does it cost?</b></summary>
-
-The assistant itself is **free and open source**. You only pay for the API provider (or use a local model via Ollama — that's **$0**).
-
-Roughly: 1 tool-use request ≈ $0.001–0.01 for Claude Haiku / Gemini Flash.
-
-</details>
-
-<details>
-<summary><b>Where are conversations stored?</b></summary>
-
-In `~/.cli-assistant/history.json`. Default limit is the last 1000 messages. Can be disabled in settings or exported via `/export`.
-
-</details>
-
-<details>
-<summary><b>Can I block certain commands?</b></summary>
-
-Yes. In the config:
-```json
-"safety": {
-  "blocked_paths": ["/etc/passwd", "/important/data"],
-  "allowed_sudo_commands": ["systemctl", "apt"]
-}
-```
-If `allowed_sudo_commands` is empty — all commands are allowed.
-
-</details>
+> ⚠️ **Linux only.** CLI Assistant is built exclusively for Debian-based Linux distributions.  
+> Windows and macOS are not supported.
 
 ---
 
 ## 🤝 Contributing
 
-PRs and Issues are welcome! Especially appreciated:
+Contributions are welcome! Ideas for contribution:
 
-- 🌍 New localization languages (just add `src/i18n/<lang>.json`)
+- 🌍 New interface languages
 - 🎨 New UI themes
-- 🔌 Support for new AI providers
-- 🛠 New tools (see [Adding a New Tool](#-adding-a-new-tool))
+- 🔌 New AI provider integrations
+- 🛠️ New system tools
+- 🐛 Bug fixes
 
 ```bash
-git clone https://github.com/yourname/cli-assistant.git
-cd cli-assistant
+git clone https://github.com/sterchiks/CLI-Assistant.git
+cd CLI-Assistant
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
-python -m src.main
+python src/main.py
 ```
 
 ---
 
 ## 📄 License
 
-MIT — do whatever you want, but no warranties.  
-See [LICENSE](LICENSE).
+**MIT License** — free to use, modify, and distribute.  
+See [LICENSE](LICENSE) for details.
 
 ---
 
 <div align="center">
 
-### Made with ❤️ for everyone who's afraid of `man bash`
+**Made for Linux users — from beginners to power users**
 
-**[⭐ Star this repo](https://github.com/yourname/cli-assistant)** if you find it useful!
+*If CLI Assistant saved you time, consider giving it a ⭐*
+
+**[GitHub](https://github.com/sterchiks/CLI-Assistant)** · **[Report a Bug](https://github.com/sterchiks/CLI-Assistant/issues)** · **[Request a Feature](https://github.com/sterchiks/CLI-Assistant/issues)**
 
 </div>
